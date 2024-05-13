@@ -1,0 +1,9 @@
+.top-word{
+    font-size:80px;
+    text-align: center;
+    margin-top:10px;
+    margin-bottom:10px;
+    color: rgb(218, 79, 24);
+    border:black 3px solid;
+    background-color: rgb(193, 217, 116);
+}
