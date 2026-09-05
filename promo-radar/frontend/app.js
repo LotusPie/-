@@ -1,4 +1,4 @@
-const state = { profile: null, loading: false };
+const state = { profile: null, loading: false, pendingReload: null };
 
 const els = {
   refreshBtn: document.getElementById("refreshBtn"),
@@ -122,8 +122,13 @@ function renderDeals(items) {
 }
 
 async function loadDeals({ force = false } = {}) {
-  if (state.loading) return;
+  // If a request is in-flight, remember the latest filter state and rerun after.
+  if (state.loading) {
+    state.pendingReload = { force: force || Boolean(state.pendingReload?.force) };
+    return;
+  }
   state.loading = true;
+  state.pendingReload = null;
   els.refreshBtn.disabled = true;
   els.status.textContent = force ? "正在重新抓取各板情報…" : "載入情報中…";
 
@@ -131,8 +136,10 @@ async function loadDeals({ force = false } = {}) {
     force: String(force),
     min_score: els.scoreSelect.value || "0",
   });
-  if (els.searchInput.value.trim()) params.set("q", els.searchInput.value.trim());
-  if (els.boardSelect.value) params.set("board", els.boardSelect.value);
+  const q = els.searchInput.value.trim();
+  const board = els.boardSelect.value;
+  if (q) params.set("q", q);
+  if (board) params.set("board", board);
 
   try {
     const data = await api(`/api/deals?${params.toString()}`);
@@ -143,9 +150,10 @@ async function loadDeals({ force = false } = {}) {
     els.totalCount.textContent = String(data.total ?? 0);
     renderChecklist(data.checklist);
     renderDeals(data.items || []);
+    const filterHint = [q && `搜尋「${q}」`, board && `版面 ${board}`].filter(Boolean).join(" · ");
     els.status.textContent = force
-      ? `已更新 ${data.total} 筆（10 分鐘內重複開啟會走快取）`
-      : `已載入 ${data.total} 筆`;
+      ? `已更新 ${data.total} 筆${filterHint ? `（${filterHint}）` : ""}（10 分鐘內重複開啟會走快取）`
+      : `已載入 ${data.total} 筆${filterHint ? `（${filterHint}）` : ""}`;
   } catch (err) {
     console.error(err);
     els.status.textContent = `載入失敗：${err.message}`;
@@ -153,6 +161,11 @@ async function loadDeals({ force = false } = {}) {
   } finally {
     state.loading = false;
     els.refreshBtn.disabled = false;
+    if (state.pendingReload) {
+      const next = state.pendingReload;
+      state.pendingReload = null;
+      await loadDeals(next);
+    }
   }
 }
 
