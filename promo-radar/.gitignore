@@ -1,4 +1,7 @@
 data/cache.json
+data/reminders.json
+data/tracker.json
+data/weekly_summary.json
 __pycache__/
 *.pyc
 .venv/

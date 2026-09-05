@@ -1,4 +1,9 @@
-const state = { profile: null, loading: false, pendingReload: null };
+const state = {
+  profile: null,
+  loading: false,
+  pendingReload: null,
+  dashboard: null,
+};
 
 const els = {
   refreshBtn: document.getElementById("refreshBtn"),
@@ -20,6 +25,18 @@ const els = {
   profileInterests: document.getElementById("profileInterests"),
   profileBoost: document.getElementById("profileBoost"),
   profileMute: document.getElementById("profileMute"),
+  reminderList: document.getElementById("reminderList"),
+  reminderMeta: document.getElementById("reminderMeta"),
+  trackerForm: document.getElementById("trackerForm"),
+  trackerBalance: document.getElementById("trackerBalance"),
+  trackerRate: document.getElementById("trackerRate"),
+  trackerRoute: document.getElementById("trackerRoute"),
+  trackerNote: document.getElementById("trackerNote"),
+  trackerProgress: document.getElementById("trackerProgress"),
+  trackerMeta: document.getElementById("trackerMeta"),
+  summaryBox: document.getElementById("summaryBox"),
+  summaryMeta: document.getElementById("summaryMeta"),
+  summaryBtn: document.getElementById("summaryBtn"),
 };
 
 function splitCsv(value) {
@@ -121,8 +138,115 @@ function renderDeals(items) {
     .join("");
 }
 
+function renderReminders(payload) {
+  const items = payload.items || [];
+  els.reminderMeta.textContent = `今日待辦 ${payload.due_count || 0} · 已完成 ${payload.done_count || 0}`;
+  if (!items.length) {
+    els.reminderList.innerHTML = `<div class="empty">目前沒有提醒項目</div>`;
+    return;
+  }
+  els.reminderList.innerHTML = items
+    .map((item) => {
+      const statusLabel =
+        item.status === "done" ? "已完成" : item.status === "due" ? "今日待辦" : "稍後";
+      return `
+        <article class="reminder ${escapeAttr(item.status)}">
+          <div>
+            <div class="reminder-top">
+              <strong>${escapeHtml(item.title)}</strong>
+              <span class="badge">${escapeHtml(statusLabel)}</span>
+            </div>
+            <p>${escapeHtml(item.detail || "")}</p>
+            <div class="meta">
+              <span>${escapeHtml(item.app || "")}</span>
+              <span>${escapeHtml(item.cadence || "")}</span>
+            </div>
+          </div>
+          <button
+            class="btn ghost tiny"
+            type="button"
+            data-reminder-id="${escapeAttr(item.id)}"
+            data-done="${item.status === "done" ? "0" : "1"}"
+          >${item.status === "done" ? "取消完成" : "標成完成"}</button>
+        </article>`;
+    })
+    .join("");
+}
+
+function renderTracker(tracker) {
+  els.trackerBalance.value = tracker.balance ?? 0;
+  els.trackerRate.value = tracker.earn_rate_percent ?? 3;
+  els.trackerRoute.innerHTML = (tracker.routes || [])
+    .map(
+      (route) =>
+        `<option value="${escapeAttr(route.id)}" ${
+          route.id === tracker.route_id ? "selected" : ""
+        }>${escapeHtml(route.label)}</option>`
+    )
+    .join("");
+
+  const pct = tracker.progress_percent ?? 0;
+  els.trackerMeta.textContent = `${tracker.program_label || "哩程計畫"} · 進度 ${pct}%`;
+  els.trackerProgress.innerHTML = `
+    <div class="progress-copy">
+      <strong>${escapeHtml(tracker.route_label || "")}</strong>
+      <span>${tracker.balance || 0} / ${tracker.points_needed || 0} 小樹點</span>
+    </div>
+    <div class="progress-bar" aria-hidden="true"><i style="width:${pct}%"></i></div>
+    <div class="progress-grid">
+      <div><span>還差</span><strong>${tracker.points_remaining || 0} 點</strong></div>
+      <div><span>約需哩程</span><strong>${tracker.miles_needed || 0}</strong></div>
+      <div><span>約還需消費</span><strong>${Number(tracker.estimated_spend_remaining || 0).toLocaleString("zh-TW")} 元</strong></div>
+      <div><span>本週增減</span><strong>${tracker.delta_this_week || 0}</strong></div>
+    </div>
+    <p class="fineprint">${escapeHtml(tracker.tax_note || "")} ${escapeHtml(tracker.disclaimer || "")}</p>
+  `;
+}
+
+function renderSummary(summary) {
+  if (!summary) {
+    els.summaryBox.innerHTML = `<div class="empty">尚無摘要</div>`;
+    return;
+  }
+  els.summaryMeta.textContent = `${summary.week_id || ""} · ${summary.generated_at || ""}`;
+  const actions = (summary.actions || [])
+    .map((text) => `<li>${escapeHtml(text)}</li>`)
+    .join("");
+  const highlights = (summary.highlights || [])
+    .map(
+      (item) => `
+      <a class="summary-hit" href="${escapeAttr(item.url || "#")}" target="_blank" rel="noopener noreferrer">
+        <span class="chip">${item.score ?? 0}</span>
+        <span>${escapeHtml(item.title || "")}</span>
+      </a>`
+    )
+    .join("");
+
+  els.summaryBox.innerHTML = `
+    <h4>${escapeHtml(summary.headline || "一週摘要")}</h4>
+    <p class="summary-narrative">${escapeHtml(summary.narrative || "")}</p>
+    <div class="progress-grid summary-stats">
+      <div><span>高相關情報</span><strong>${summary.stats?.top_deals ?? 0}</strong></div>
+      <div><span>今日待辦</span><strong>${summary.stats?.reminders_due ?? 0}</strong></div>
+      <div><span>小樹點</span><strong>${summary.stats?.tree_points ?? 0}</strong></div>
+      <div><span>機票進度</span><strong>${summary.stats?.progress_percent ?? 0}%</strong></div>
+    </div>
+    <h5>本週行動</h5>
+    <ul class="summary-actions">${actions}</ul>
+    <h5>精選情報</h5>
+    <div class="summary-hits">${highlights || `<div class="empty">本週暫無高相關情報</div>`}</div>
+  `;
+}
+
+async function loadDashboard() {
+  const data = await api("/api/dashboard");
+  state.dashboard = data;
+  renderReminders(data.reminders || { items: [] });
+  renderTracker(data.tracker || {});
+  renderSummary(data.summary || null);
+}
+
 async function loadDeals({ force = false } = {}) {
-  // If a request is in-flight, remember the latest filter state and rerun after.
   if (state.loading) {
     state.pendingReload = { force: force || Boolean(state.pendingReload?.force) };
     return;
@@ -154,6 +278,7 @@ async function loadDeals({ force = false } = {}) {
     els.status.textContent = force
       ? `已更新 ${data.total} 筆${filterHint ? `（${filterHint}）` : ""}（10 分鐘內重複開啟會走快取）`
       : `已載入 ${data.total} 筆${filterHint ? `（${filterHint}）` : ""}`;
+    await loadDashboard();
   } catch (err) {
     console.error(err);
     els.status.textContent = `載入失敗：${err.message}`;
@@ -205,6 +330,63 @@ els.form.addEventListener("submit", async (event) => {
     await loadDeals({ force: false });
   } catch (err) {
     alert(`儲存失敗：${err.message}`);
+  }
+});
+
+els.reminderList.addEventListener("click", async (event) => {
+  const btn = event.target.closest("[data-reminder-id]");
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const payload = await api("/api/reminders/complete", {
+      method: "POST",
+      body: JSON.stringify({
+        id: btn.dataset.reminderId,
+        done: btn.dataset.done === "1",
+      }),
+    });
+    renderReminders(payload);
+    const summary = await api("/api/summary/weekly?force=true");
+    renderSummary(summary);
+  } catch (err) {
+    alert(`更新提醒失敗：${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+els.trackerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const payload = {
+    balance: Number(els.trackerBalance.value || 0),
+    earn_rate_percent: Number(els.trackerRate.value || 3),
+    route_id: els.trackerRoute.value,
+    note: els.trackerNote.value.trim() || undefined,
+  };
+  try {
+    const tracker = await api("/api/tracker", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    renderTracker(tracker);
+    els.trackerNote.value = "";
+    const summary = await api("/api/summary/weekly?force=true");
+    renderSummary(summary);
+  } catch (err) {
+    alert(`更新進度失敗：${err.message}`);
+  }
+});
+
+els.summaryBtn.addEventListener("click", async () => {
+  els.summaryBtn.disabled = true;
+  els.summaryMeta.textContent = "產生中…";
+  try {
+    const summary = await api("/api/summary/weekly?force=true");
+    renderSummary(summary);
+  } catch (err) {
+    els.summaryMeta.textContent = `產生失敗：${err.message}`;
+  } finally {
+    els.summaryBtn.disabled = false;
   }
 });
 
