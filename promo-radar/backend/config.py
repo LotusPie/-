@@ -28,7 +28,7 @@ DEFAULT_PROFILE = {
         "學生",
         "校園",
     ],
-    "keywords_mute": ["徵卡友", "售", "買賣", "代辦", "違約金"],
+    "keywords_mute": ["徵卡友", "徵", "售", "買賣", "代辦", "違約金", "交換"],
 }
 
 PTT_BOARDS = [
