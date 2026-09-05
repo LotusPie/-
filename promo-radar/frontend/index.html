@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>優惠雷達 Promo Radar</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Sora:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="orb orb-a" aria-hidden="true"></div>
+  <div class="orb orb-b" aria-hidden="true"></div>
+
+  <header class="hero">
+    <div>
+      <p class="eyebrow">時間換優惠 · 情報中心</p>
+      <h1>優惠雷達</h1>
+      <p class="lede">彙整 PTT 情報，加上銀行 App 提醒、小樹點換機票進度，以及一週自動摘要。</p>
+    </div>
+    <div class="hero-actions">
+      <button id="refreshBtn" class="btn primary" type="button">重新抓取</button>
+      <button id="profileBtn" class="btn ghost" type="button">偏好設定</button>
+    </div>
+  </header>
+
+  <section class="stats">
+    <div><span>上次更新</span><strong id="fetchedAt">—</strong></div>
+    <div><span>命中筆數</span><strong id="totalCount">0</strong></div>
+    <div><span>目前檔案</span><strong id="profileSummary">CUBE · 網購</strong></div>
+  </section>
+
+  <section class="workspace" aria-label="規劃面板">
+    <div class="panel plan-panel">
+      <div class="panel-head">
+        <div>
+          <h3>銀行 App 活動提醒</h3>
+          <p id="reminderMeta">今日待辦與固定節奏</p>
+        </div>
+      </div>
+      <div id="reminderList" class="reminder-list"></div>
+    </div>
+
+    <div class="panel plan-panel">
+      <div class="panel-head">
+        <div>
+          <h3>小樹點 → 機票進度</h3>
+          <p id="trackerMeta">設定目標航線與目前點數</p>
+        </div>
+      </div>
+      <form id="trackerForm" class="tracker-form">
+        <label>目前小樹點
+          <input id="trackerBalance" type="number" min="0" step="1" />
+        </label>
+        <label>預估回饋率 %
+          <input id="trackerRate" type="number" min="0.1" max="20" step="0.1" />
+        </label>
+        <label>目標航線
+          <select id="trackerRoute"></select>
+        </label>
+        <label>備註（可選）
+          <input id="trackerNote" type="text" placeholder="例如：這個月網購加總" />
+        </label>
+        <button class="btn primary" type="submit">更新進度</button>
+      </form>
+      <div id="trackerProgress" class="tracker-progress"></div>
+    </div>
+
+    <div class="panel plan-panel summary-panel">
+      <div class="panel-head">
+        <div>
+          <h3>一週自動摘要</h3>
+          <p id="summaryMeta">依情報、提醒與小樹點進度產生</p>
+        </div>
+        <button id="summaryBtn" class="btn ghost" type="button">重新產生</button>
+      </div>
+      <div id="summaryBox" class="summary-box"></div>
+    </div>
+  </section>
+
+  <section class="filters">
+    <label class="grow">
+      <span>搜尋</span>
+      <input id="searchInput" type="search" placeholder="例如：CUBE、首刷、小樹點、高鐵…" />
+    </label>
+    <label>
+      <span>版面</span>
+      <select id="boardSelect">
+        <option value="">全部來源</option>
+        <option value="creditcard">信用卡板</option>
+        <option value="Lifeismoney">省錢板</option>
+        <option value="Points">點數哩程板</option>
+      </select>
+    </label>
+    <label>
+      <span>最低相關分</span>
+      <select id="scoreSelect">
+        <option value="0">顯示全部</option>
+        <option value="20" selected>20+</option>
+        <option value="40">40+ 高相關</option>
+        <option value="60">60+ 必看</option>
+      </select>
+    </label>
+  </section>
+
+  <main class="layout">
+    <section>
+      <div class="section-title">
+        <h2>為你排序的情報</h2>
+        <p>分數依持卡、興趣與關鍵字加權；點標題可開原文。</p>
+      </div>
+      <div id="status" class="status">載入中…</div>
+      <div id="dealList" class="deal-list"></div>
+    </section>
+
+    <aside>
+      <div class="panel">
+        <h3>每週檢查清單</h3>
+        <ul id="checklist"></ul>
+      </div>
+      <div class="panel">
+        <h3>固定情報站</h3>
+        <div id="sourceList"></div>
+      </div>
+      <div class="panel tip">
+        <h3>你的預設用法</h3>
+        <p>平常 <strong>玩數位</strong>（蝦皮／酷澎／淘寶／PChome）→ 高鐵日 <strong>趣旅行</strong> → 大餐才 <strong>樂饗購</strong>。</p>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="profileDialog">
+    <form method="dialog" id="profileForm" class="dialog">
+      <h2>偏好設定</h2>
+      <p class="dialog-note">這些會影響排序權重，可依你實際持卡與目標調整。</p>
+      <label>暱稱<input id="profileName" /></label>
+      <label>持有卡片（逗號分隔）<input id="profileCards" placeholder="CUBE" /></label>
+      <label>興趣（逗號分隔）<input id="profileInterests" placeholder="網購,高鐵,小樹點,哩程,日本" /></label>
+      <label>加分關鍵字（逗號分隔）<textarea id="profileBoost" rows="3"></textarea></label>
+      <label>靜音關鍵字（逗號分隔）<input id="profileMute" placeholder="徵卡友,售,代辦" /></label>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn ghost" type="submit">取消</button>
+        <button id="saveProfileBtn" class="btn primary" value="save" type="submit">儲存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
