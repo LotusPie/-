@@ -99,15 +99,13 @@
                                                TextWrapping="Wrap"
                                                IsTextSelectionEnabled="True"
                                                Opacity="{x:Bind LineOpacity, Mode=OneWay}"
-                                               FontSize="{x:Bind FontSize, Mode=OneWay}"
-                                               FontWeight="{x:Bind FontWeight, Mode=OneWay}"/>
+                                               FontSize="{x:Bind FontSize, Mode=OneWay}"/>
                                     <TextBlock Grid.Column="1"
                                                Text="{x:Bind Translation, Mode=OneWay}"
                                                TextWrapping="Wrap"
                                                IsTextSelectionEnabled="True"
                                                Opacity="{x:Bind LineOpacity, Mode=OneWay}"
-                                               FontSize="{x:Bind FontSize, Mode=OneWay}"
-                                               FontWeight="{x:Bind FontWeight, Mode=OneWay}"/>
+                                               FontSize="{x:Bind FontSize, Mode=OneWay}"/>
                                 </Grid>
                             </Border>
                         </DataTemplate>

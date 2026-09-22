@@ -37,19 +37,22 @@
 
 ## 怎麼建
 
-在 **Windows** 上（pull 之後請整份重編）：
+在 **Windows** 上，先 `git pull`，再於 **`desktop` 資料夾**重編（不要在 repo 根目錄建；csproj 在 `desktop\` 底下）。
 
-```bat
-cd desktop
-dotnet restore LyricsTranslator.sln
-dotnet test tests\LyricsTranslator.Core.Tests\LyricsTranslator.Core.Tests.csproj
-dotnet build src\LyricsTranslator.App\LyricsTranslator.App.csproj -c Release -p:Platform=x64
+PowerShell（以本機路徑為例）：
+
+```powershell
+Set-Location D:\tool\lyrics-translator\desktop
+dotnet restore .\LyricsTranslator.sln
+dotnet test .\tests\LyricsTranslator.Core.Tests\LyricsTranslator.Core.Tests.csproj
+dotnet build .\src\LyricsTranslator.App\LyricsTranslator.App.csproj -c Release -p:Platform=x64
 ```
 
 發佈 unpackaged 自含執行檔（資料夾，不是單一 exe）：
 
-```bat
-dotnet publish src\LyricsTranslator.App\LyricsTranslator.App.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
+```powershell
+Set-Location D:\tool\lyrics-translator\desktop
+dotnet publish .\src\LyricsTranslator.App\LyricsTranslator.App.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
 ```
 
 輸出在 `src\LyricsTranslator.App\bin\publish\win-x64\`。執行 `LyricsTranslator.exe`。
