@@ -30,17 +30,20 @@ public sealed partial class MainWindow : Window
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         _appWindow = AppWindow.GetFromWindowId(windowId);
-        _appWindow.Resize(new Windows.Graphics.SizeInt32(920, 640));
+        _appWindow.Resize(new Windows.Graphics.SizeInt32(960, 720));
         _appWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"));
         _appWindow.Closing += OnClosing;
 
         TrayIcon.LeftClickCommand = ShowWindowCommand;
         TrayIcon.ForceCreate();
 
+        ViewModel.CurrentLineChanged += (_, _) => ScrollCurrentLine();
+
         nowPlaying.SessionChanged += async (_, session) =>
         {
             await ViewModel.OnSessionChangedAsync(session);
         };
+        nowPlaying.ProgressChanged += (_, progress) => ViewModel.OnProgress(progress);
 
         Closed += (_, _) =>
         {
@@ -63,10 +66,33 @@ public sealed partial class MainWindow : Window
 
     public Visibility BoolVis(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
+    public Visibility InvertVis(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
+
     public Visibility NonEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
 
     public string PauseLabel(bool paused) => paused ? "繼續偵測" : "暫停偵測";
+
+    private void ScrollCurrentLine()
+    {
+        try
+        {
+            if (LyricList.Items.Count == 0)
+            {
+                return;
+            }
+
+            var index = Math.Clamp(ViewModel.CurrentLineIndex, 0, LyricList.Items.Count - 1);
+            if (LyricList.Items[index] is LyricLineItem item)
+            {
+                LyricList.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
+            }
+        }
+        catch
+        {
+            // List may be rebuilding.
+        }
+    }
 
     private MenuFlyout BuildTrayMenu()
     {

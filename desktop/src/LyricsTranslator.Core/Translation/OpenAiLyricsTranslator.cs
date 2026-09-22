@@ -28,7 +28,8 @@ public sealed class OpenAiLyricsTranslator : ILyricsTranslator
         var payload = new
         {
             model = settings.EffectiveModel,
-            temperature = 0.4,
+            temperature = 0.7,
+            max_tokens = 8192,
             messages = new[]
             {
                 new { role = "system", content = TranslationPrompt.SystemPrompt },

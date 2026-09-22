@@ -37,6 +37,8 @@ public class GeminiLyricsTranslatorTests
         Assert.Equal("test-gemini-key", handler.LastApiKeyHeader);
         Assert.Contains("systemInstruction", handler.LastBody, StringComparison.Ordinal);
         Assert.Contains("YOASOBI", handler.LastBody, StringComparison.Ordinal);
+        Assert.Contains("through-line", handler.LastBody, StringComparison.Ordinal);
+        Assert.Contains("\"temperature\":0.7", handler.LastBody, StringComparison.Ordinal);
     }
 
     private sealed class StubHandler : HttpMessageHandler

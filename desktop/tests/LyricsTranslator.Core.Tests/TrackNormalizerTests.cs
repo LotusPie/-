@@ -68,4 +68,21 @@ public class TrackNormalizerTests
         var query = TrackNormalizer.FromRaw("Dynamite", "방탄소년단", null, null, "chrome", PlayerKind.Browser, true);
         Assert.Equal("bts", query.NormalizedArtist);
     }
+
+    [Fact]
+    public void Japanese_title_keeps_kana_and_strips_official_video()
+    {
+        var query = TrackNormalizer.FromRaw(
+            "夜に駆ける (Official Video)",
+            "YOASOBI",
+            null,
+            TimeSpan.FromSeconds(261),
+            "Chrome",
+            PlayerKind.Browser,
+            true);
+
+        Assert.Equal("夜に駆ける", query.NormalizedTitle);
+        Assert.Equal("夜に駆ける", query.DisplayTitle);
+        Assert.Equal("yoasobi", query.NormalizedArtist);
+    }
 }

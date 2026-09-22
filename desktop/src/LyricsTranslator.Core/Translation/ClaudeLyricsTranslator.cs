@@ -28,7 +28,8 @@ public sealed class ClaudeLyricsTranslator : ILyricsTranslator
         var payload = new
         {
             model = settings.EffectiveModel,
-            max_tokens = 4096,
+            max_tokens = 8192,
+            temperature = 0.7,
             system = TranslationPrompt.SystemPrompt,
             messages = new[]
             {

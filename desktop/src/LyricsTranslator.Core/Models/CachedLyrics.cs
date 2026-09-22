@@ -12,5 +12,6 @@ public sealed class CachedLyrics
     public string? Translation { get; init; }
     public LyricsSource TranslationSource { get; init; }
     public long? LrclibId { get; init; }
+    public string? SyncedLyrics { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
 }

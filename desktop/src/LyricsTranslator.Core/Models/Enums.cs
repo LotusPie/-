@@ -28,6 +28,7 @@ public enum LyricsSource
     Lrclib,
     Ai,
     Paste,
+    Bahamut,
 }
 
 public enum LyricsStatus

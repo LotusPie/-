@@ -46,7 +46,7 @@ public class SessionSelectorTests
     {
         var sessions = new[]
         {
-            new NowPlayingSession("Spotify.exe", "Song", "Artist", null, TimeSpan.FromMinutes(3), true, PlayerKind.Other),
+            new NowPlayingSession("Spotify.exe", "Song", "Artist", null, TimeSpan.FromMinutes(3), TimeSpan.FromSeconds(12), true, PlayerKind.Other),
             Browser("Very Long Documentary", isPlaying: true, duration: TimeSpan.FromHours(2)),
         };
 
@@ -69,8 +69,8 @@ public class SessionSelectorTests
     }
 
     private static NowPlayingSession Apple(string title, bool isPlaying) =>
-        new("AppleInc.AppleMusicWin_nzyj5cx40ttqa!App", title, "Taylor Swift — Midnights", null, TimeSpan.FromSeconds(200), isPlaying, PlayerKind.AppleMusic);
+        new("AppleInc.AppleMusicWin_nzyj5cx40ttqa!App", title, "Taylor Swift — Midnights", null, TimeSpan.FromSeconds(200), TimeSpan.FromSeconds(15), isPlaying, PlayerKind.AppleMusic);
 
     private static NowPlayingSession Browser(string title, bool isPlaying, TimeSpan duration) =>
-        new("Chrome", title, "VEVO", null, duration, isPlaying, PlayerKind.Browser);
+        new("Chrome", title, "VEVO", null, duration, TimeSpan.FromSeconds(8), isPlaying, PlayerKind.Browser);
 }

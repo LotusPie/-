@@ -1,8 +1,10 @@
 # 歌詞翻譯（Windows 桌面 v1）
 
-聽 **Apple Music**（Microsoft Store）或瀏覽器裡的 **YouTube Music** 時，系統匣小視窗顯示歌名、原文、台灣繁體譯詞，並標示來源（社群／LRCLIB、AI、手貼）。
+聽 **Apple Music**（Microsoft Store）或瀏覽器裡的 **YouTube Music** 時，系統匣小視窗顯示歌名、原文、台灣繁體譯詞，並標示來源（巴哈姆特、社群／LRCLIB、AI、手貼）。播放中歌詞會跟著走。
 
 這是**個人本機工具**，不是 Microsoft Store 應用。不要把歌詞庫散佈出去。
+
+**從 git pull 之後必須在 Windows 上重新建置**（`dotnet build` / `dotnet publish` 或 Visual Studio）。只更新原始碼不會自動換成新的 exe。
 
 ## 系統需求
 
@@ -16,15 +18,17 @@
 已接上：
 
 - 系統匣 + 小視窗（原文／繁中並排、來源標籤）
+- 卡拉 OK 式移動視窗：現在行較醒目；有 LRC 就跟時間軸，沒有就依 SMTC 進度捲動
 - SMTC 列舉工作階段，過濾 Apple Music 與瀏覽器；可用設定釘選
-- LRCLIB 查原文 + SQLite 本機快取
-- 有原文、沒有人工繁中時，用你自己的 Claude、OpenAI 或 **Gemini** 金鑰翻譯
+- 日文歌先查巴哈姆特創作大廳的社群繁中譯詞（本機快取，不內建歌詞庫）
+- LRCLIB 查原文／LRC + SQLite 本機快取
+- 有原文、沒有人工繁中時，用你自己的 Claude、OpenAI 或 **Gemini** 金鑰，依**整曲意境**翻譯
 - 找不到原文時**不發明歌詞**，只讓你貼上原文再譯
 - 設定：API 金鑰（DPAPI 保護）、模型名稱、播放來源釘選
 
 刻意不做／仍是 stub：
 
-- 卡拉 OK／逐行同步（v1 不做）
+- 像素級逐字卡拉 OK（沒有 LRC 時不假裝有）
 - Musixmatch 或其他授權歌詞 API
 - th-ch / YTMDesktop / port 9863（瀏覽器 SMTC 為主，不要求 Companion）
 - 上架 Microsoft Store、單檔 exe 安裝程式（發佈是 unpackaged 資料夾）
@@ -33,7 +37,7 @@
 
 ## 怎麼建
 
-在 **Windows** 上：
+在 **Windows** 上（pull 之後請整份重編）：
 
 ```bat
 cd desktop
@@ -75,20 +79,22 @@ Visual Studio：開啟 `desktop\LyricsTranslator.sln`，將 `LyricsTranslator.Ap
 
 | 步驟 | 行為 |
 | --- | --- |
-| 1 | 本機 SQLite 快取 |
-| 2 | [LRCLIB](https://lrclib.net/docs) 社群**原文**（標「社群／LRCLIB」） |
-| 3 | 若原文已是繁中，直接顯示，不呼叫 AI |
-| 4 | 否則用你的金鑰翻成台灣繁體（標「AI」） |
-| 5 | LRCLIB 沒有這首歌：請手貼原文（標「手貼」），禁止模型憑歌名瞎寫 |
+| 1 | 本機 SQLite 快取（含 LRC 時間軸） |
+| 2 | 日文歌：查 [巴哈姆特創作大廳](https://home.gamer.com.tw/) 社群繁中譯詞。命中則顯示並標「巴哈姆特」。找不到或逾時就往下走，**不發明** |
+| 3 | [LRCLIB](https://lrclib.net/docs) 社群**原文**與 **synced LRC**（標「社群／LRCLIB」） |
+| 4 | 若原文已是繁中，直接顯示，不呼叫 AI |
+| 5 | 否則把完整原文 + 歌名／歌手／專輯交給你的金鑰，依整曲意境翻成台灣繁體（標「AI」） |
+| 6 | 沒有原文：請手貼（標「手貼」），禁止模型憑歌名瞎寫 |
 
-LRCLIB 要求 `User-Agent`；本應用使用 `LyricsTranslator/1.0`。
+LRCLIB 要求 `User-Agent`；本應用使用 `LyricsTranslator/1.0`。巴哈姆特只在本機抓 HTML、本機快取，不打包歌詞。
 
 ## 播放來源
 
 - **Apple Music**：Store App 的 SMTC。會拆 `歌手 — 專輯`，且不盲信 Paused。
 - **YouTube Music**：Chrome / Edge / Firefox 等瀏覽器的 Media Session。SMTC **沒有網址**，無法保證一定是 `music.youtube.com`。請在設定釘選「只跟瀏覽器」或「只跟 Apple Music」。
 - 列舉 `GetSessions()`，不盲信 `GetCurrentSession()`。
+- 歌詞視窗用 SMTC `Position`／`EndTime`；有 LRC 就對時間戳，沒有就用進度比例捲動。
 
 ## 授權姿態
 
-個人電腦上顯示與快取。不上架、不散佈歌詞資料庫、不爬歌詞網站。
+個人電腦上顯示與快取。不上架、不散佈歌詞資料庫。巴哈姆特是此個人工具指定的社群譯詞來源，不是給商店用的爬蟲。

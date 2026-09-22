@@ -1,5 +1,7 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LyricsTranslator.Core.Lyrics;
 using LyricsTranslator.Core.Models;
 using LyricsTranslator.Core.Normalization;
 using LyricsTranslator.Core.NowPlaying;
@@ -17,6 +19,9 @@ public partial class MainViewModel : ObservableObject
     private readonly SemaphoreSlim _runGate = new(1, 1);
     private CancellationTokenSource _cts = new();
     private TrackQuery? _currentQuery;
+    private IReadOnlyList<TimedLyric> _track = [];
+    private TimeSpan _position;
+    private TimeSpan? _duration;
     private int _generation;
 
     public MainViewModel(LyricsPipeline pipeline, SettingsStore settings, DispatcherQueue dispatcher)
@@ -28,6 +33,10 @@ public partial class MainViewModel : ObservableObject
         Apply(LyricsDisplay.Idle("未偵測到 Apple Music 或瀏覽器裡的 YouTube Music。"));
     }
 
+    public ObservableCollection<LyricLineItem> LyricLines { get; } = [];
+
+    public event EventHandler<int>? CurrentLineChanged;
+
     [ObservableProperty] private string _title = "未在播放";
     [ObservableProperty] private string _artist = string.Empty;
     [ObservableProperty] private string _album = string.Empty;
@@ -35,6 +44,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _originalLyrics = string.Empty;
     [ObservableProperty] private string _translatedLyrics = string.Empty;
     [ObservableProperty] private string _statusMessage = string.Empty;
+    [ObservableProperty] private string _syncCaption = string.Empty;
+    [ObservableProperty] private string _positionLabel = string.Empty;
     [ObservableProperty] private string _pasteText = string.Empty;
     [ObservableProperty] private string _retryHint = string.Empty;
     [ObservableProperty] private bool _needsPaste;
@@ -42,6 +53,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _canRetry;
     [ObservableProperty] private bool _detectionPaused;
     [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private bool _hasLyricLines;
+    [ObservableProperty] private int _currentLineIndex;
 
     public async Task OnSessionChangedAsync(NowPlayingSession? session)
     {
@@ -50,8 +63,11 @@ public partial class MainViewModel : ObservableObject
             CancelInFlight();
             Publish(LyricsDisplay.Idle("未偵測到 Apple Music 或瀏覽器裡的 YouTube Music。可在設定釘選播放來源，或暫停偵測。"));
             _currentQuery = null;
+            _track = [];
             return;
         }
+
+        OnProgress(new PlaybackProgress(session.Position, session.Duration, session.IsPlaying));
 
         var query = TrackNormalizer.FromRaw(
             session.Title,
@@ -69,6 +85,17 @@ public partial class MainViewModel : ObservableObject
 
         _currentQuery = query;
         await RunAsync(display => _pipeline.ResolveAsync(query, display), query).ConfigureAwait(false);
+    }
+
+    public void OnProgress(PlaybackProgress progress)
+    {
+        _position = progress.Position;
+        _duration = progress.Duration;
+        _dispatcher.TryEnqueue(() =>
+        {
+            PositionLabel = FormatPosition(progress.Position, progress.Duration);
+            HighlightCurrentLine();
+        });
     }
 
     [RelayCommand]
@@ -205,5 +232,71 @@ public partial class MainViewModel : ObservableObject
         NeedsApiKey = display.Status == LyricsStatus.NeedsApiKey;
         CanRetry = display.Status == LyricsStatus.Ready && display.TranslationSource == LyricsSource.Ai;
         IsBusy = display.Status == LyricsStatus.Loading;
+
+        _track = display.Status is LyricsStatus.Ready or LyricsStatus.NeedsApiKey
+            ? LyricTrack.Build(display.OriginalLyrics, display.Translation, display.SyncedLyrics)
+            : [];
+        RebuildLines();
+        var timed = _track.Any(l => l.Timestamp is not null);
+        SyncCaption = _track.Count == 0
+            ? string.Empty
+            : timed
+                ? "依 LRC 時間軸跟隨"
+                : "依播放進度捲動（無時間軸）";
+        HighlightCurrentLine();
+    }
+
+    private void RebuildLines()
+    {
+        LyricLines.Clear();
+        foreach (var line in _track)
+        {
+            LyricLines.Add(new LyricLineItem
+            {
+                Original = line.Original,
+                Translation = line.Translation,
+            });
+        }
+
+        HasLyricLines = LyricLines.Count > 0;
+        CurrentLineIndex = -1;
+    }
+
+    private void HighlightCurrentLine()
+    {
+        if (LyricLines.Count == 0)
+        {
+            if (CurrentLineIndex != 0)
+            {
+                CurrentLineIndex = 0;
+            }
+
+            return;
+        }
+
+        var index = LyricTrack.IndexAt(_track, _position, _duration);
+        var changed = index != CurrentLineIndex;
+        CurrentLineIndex = index;
+        for (var i = 0; i < LyricLines.Count; i++)
+        {
+            LyricLines[i].ApplyWindow(Math.Abs(i - index));
+        }
+
+        if (changed)
+        {
+            CurrentLineChanged?.Invoke(this, index);
+        }
+    }
+
+    private static string FormatPosition(TimeSpan position, TimeSpan? duration)
+    {
+        static string Fmt(TimeSpan value) =>
+            value.TotalHours >= 1
+                ? value.ToString(@"h\:mm\:ss")
+                : value.ToString(@"m\:ss");
+
+        return duration is { TotalMilliseconds: > 0 }
+            ? $"{Fmt(position)} / {Fmt(duration.Value)}"
+            : Fmt(position);
     }
 }

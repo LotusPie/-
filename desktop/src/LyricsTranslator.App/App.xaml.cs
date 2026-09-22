@@ -17,6 +17,7 @@ public partial class App : Application
     private SqliteLyricsCache? _cache;
     private SmtcNowPlayingSource? _smtc;
     private HttpClient? _lrclibHttp;
+    private HttpClient? _bahamutHttp;
     private HttpClient? _aiHttp;
 
     public App()
@@ -40,11 +41,13 @@ public partial class App : Application
         await _cache.InitializeAsync();
 
         _lrclibHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        _bahamutHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         _aiHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
 
         var lrclib = new LrclibClient(_lrclibHttp);
+        var bahamut = new BahamutClient(_bahamutHttp);
         var translators = new TranslatorFactory(_aiHttp, settings.Snapshot);
-        var pipeline = new LyricsPipeline(_cache, lrclib, translators.Create, settings.Snapshot);
+        var pipeline = new LyricsPipeline(_cache, lrclib, bahamut, translators.Create, settings.Snapshot);
         _smtc = new SmtcNowPlayingSource(settings);
 
         _window = new MainWindow(pipeline, _smtc, settings);

@@ -16,6 +16,7 @@ public static class SourceLabelFormatter
             LyricsSource.Lrclib => "社群／LRCLIB",
             LyricsSource.Paste => "手貼",
             LyricsSource.Ai => "AI",
+            LyricsSource.Bahamut => "巴哈姆特",
             _ => null,
         };
         var translationText = translation switch
@@ -23,6 +24,7 @@ public static class SourceLabelFormatter
             LyricsSource.Ai => "AI",
             LyricsSource.Paste => "手貼",
             LyricsSource.Lrclib => "社群／LRCLIB",
+            LyricsSource.Bahamut => "巴哈姆特",
             _ => null,
         };
 

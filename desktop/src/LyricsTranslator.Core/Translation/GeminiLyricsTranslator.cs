@@ -43,7 +43,7 @@ public sealed class GeminiLyricsTranslator : ILyricsTranslator
             },
             generationConfig = new
             {
-                temperature = 0.4,
+                temperature = 0.7,
                 maxOutputTokens = 8192,
             },
         };

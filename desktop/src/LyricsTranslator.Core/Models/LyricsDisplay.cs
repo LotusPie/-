@@ -10,7 +10,8 @@ public sealed record LyricsDisplay(
     LyricsSource TranslationSource,
     string SourceLabel,
     LyricsStatus Status,
-    string? Message)
+    string? Message,
+    string? SyncedLyrics = null)
 {
     public static LyricsDisplay Idle(string message) => new(
         Title: "未在播放",

@@ -12,6 +12,8 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
     private readonly Dictionary<string, GlobalSystemMediaTransportControlsSession> _hooked = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
     private int _refreshSerial;
+    private Timer? _progressTimer;
+    private GlobalSystemMediaTransportControlsSession? _timelineSession;
 
     public SmtcNowPlayingSource(SettingsStore settings)
     {
@@ -20,17 +22,25 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
     }
 
     public event EventHandler<NowPlayingSession?>? SessionChanged;
+    public event EventHandler<PlaybackProgress>? ProgressChanged;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
         _manager.SessionsChanged += (_, _) => _ = RefreshAsync();
         _manager.CurrentSessionChanged += (_, _) => _ = RefreshAsync();
+        _progressTimer = new Timer(_ => PollProgress(), null, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(200));
         await RefreshAsync().ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (_progressTimer is not null)
+        {
+            await _progressTimer.DisposeAsync().ConfigureAwait(false);
+            _progressTimer = null;
+        }
+
         if (_manager is not null)
         {
             _manager.SessionsChanged -= (_, _) => { };
@@ -38,7 +48,7 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
         }
 
         UnhookAll();
-        await Task.CompletedTask;
+        Volatile.Write(ref _timelineSession, null);
     }
 
     private async Task RefreshAsync()
@@ -76,7 +86,46 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
 
         var snapshot = _settings.Snapshot();
         var picked = SessionSelector.Pick(mapped, snapshot.PlayerPin, snapshot.DetectionPaused);
+        lock (_gate)
+        {
+            if (picked is null)
+            {
+                Volatile.Write(ref _timelineSession, null);
+            }
+            else if (_hooked.TryGetValue(picked.SourceAppId, out var smtc))
+            {
+                Volatile.Write(ref _timelineSession, smtc);
+            }
+        }
+
         SessionChanged?.Invoke(this, picked);
+        if (picked is not null)
+        {
+            ProgressChanged?.Invoke(this, new PlaybackProgress(picked.Position, picked.Duration, picked.IsPlaying));
+        }
+    }
+
+    private void PollProgress()
+    {
+        var session = Volatile.Read(ref _timelineSession);
+        if (session is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var timeline = session.GetTimelineProperties();
+            var playback = session.GetPlaybackInfo();
+            TimeSpan? duration = timeline.EndTime > TimeSpan.Zero ? timeline.EndTime : null;
+            var status = playback.PlaybackStatus;
+            var isPlaying = status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            ProgressChanged?.Invoke(this, new PlaybackProgress(timeline.Position, duration, isPlaying));
+        }
+        catch
+        {
+            // Session may already be gone; next RefreshAsync will clear it.
+        }
     }
 
     private void Hook(IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions)
@@ -104,7 +153,6 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
 
                 session.MediaPropertiesChanged += OnSessionEvent;
                 session.PlaybackInfoChanged += OnSessionEvent;
-                session.TimelinePropertiesChanged += OnSessionEvent;
                 _hooked[id] = session;
             }
 
@@ -137,7 +185,6 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
         {
             session.MediaPropertiesChanged -= OnSessionEvent;
             session.PlaybackInfoChanged -= OnSessionEvent;
-            session.TimelinePropertiesChanged -= OnSessionEvent;
         }
         catch
         {
@@ -177,6 +224,7 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
         }
 
         TimeSpan? duration = null;
+        var position = TimeSpan.Zero;
         var isPlaying = false;
         try
         {
@@ -184,6 +232,11 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
             if (timeline.EndTime > TimeSpan.Zero)
             {
                 duration = timeline.EndTime;
+            }
+
+            if (timeline.Position >= TimeSpan.Zero)
+            {
+                position = timeline.Position;
             }
 
             var playback = session.GetPlaybackInfo();
@@ -209,6 +262,7 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
             Artist: props.Artist,
             Album: string.IsNullOrWhiteSpace(props.AlbumTitle) ? null : props.AlbumTitle,
             Duration: duration,
+            Position: position,
             IsPlaying: isPlaying,
             PlayerKind: kind);
     }

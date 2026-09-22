@@ -45,10 +45,21 @@ public sealed class SqliteLyricsCache : ILyricsCache, IAsyncDisposable
                   translation TEXT,
                   translation_source TEXT,
                   lrclib_id INTEGER,
+                  synced_lyrics TEXT,
                   updated_at TEXT NOT NULL
                 );
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+            cmd.CommandText = "ALTER TABLE lyrics_cache ADD COLUMN synced_lyrics TEXT;";
+            try
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (SqliteException)
+            {
+                // Column already exists on databases created with the current schema.
+            }
         }
         finally
         {
@@ -68,7 +79,7 @@ public sealed class SqliteLyricsCache : ILyricsCache, IAsyncDisposable
                 """
                 SELECT cache_key, title, artist, album, duration_seconds,
                        original_lyrics, original_source, translation, translation_source,
-                       lrclib_id, updated_at
+                       lrclib_id, synced_lyrics, updated_at
                 FROM lyrics_cache
                 WHERE cache_key = $key
                 LIMIT 1;
@@ -92,7 +103,8 @@ public sealed class SqliteLyricsCache : ILyricsCache, IAsyncDisposable
                 Translation = reader.IsDBNull(7) ? null : reader.GetString(7),
                 TranslationSource = reader.IsDBNull(8) ? LyricsSource.None : ParseSource(reader.GetString(8)),
                 LrclibId = reader.IsDBNull(9) ? null : reader.GetInt64(9),
-                UpdatedAt = DateTimeOffset.Parse(reader.GetString(10)),
+                SyncedLyrics = reader.IsDBNull(10) ? null : reader.GetString(10),
+                UpdatedAt = DateTimeOffset.Parse(reader.GetString(11)),
             };
         }
         finally
@@ -114,11 +126,11 @@ public sealed class SqliteLyricsCache : ILyricsCache, IAsyncDisposable
                 INSERT INTO lyrics_cache (
                   cache_key, title, artist, album, duration_seconds,
                   original_lyrics, original_source, translation, translation_source,
-                  lrclib_id, updated_at)
+                  lrclib_id, synced_lyrics, updated_at)
                 VALUES (
                   $cache_key, $title, $artist, $album, $duration_seconds,
                   $original_lyrics, $original_source, $translation, $translation_source,
-                  $lrclib_id, $updated_at)
+                  $lrclib_id, $synced_lyrics, $updated_at)
                 ON CONFLICT(cache_key) DO UPDATE SET
                   title = excluded.title,
                   artist = excluded.artist,
@@ -129,6 +141,7 @@ public sealed class SqliteLyricsCache : ILyricsCache, IAsyncDisposable
                   translation = excluded.translation,
                   translation_source = excluded.translation_source,
                   lrclib_id = excluded.lrclib_id,
+                  synced_lyrics = excluded.synced_lyrics,
                   updated_at = excluded.updated_at;
                 """;
             cmd.Parameters.AddWithValue("$cache_key", record.CacheKey);
@@ -141,6 +154,7 @@ public sealed class SqliteLyricsCache : ILyricsCache, IAsyncDisposable
             cmd.Parameters.AddWithValue("$translation", (object?)record.Translation ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$translation_source", record.TranslationSource.ToString());
             cmd.Parameters.AddWithValue("$lrclib_id", (object?)record.LrclibId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$synced_lyrics", (object?)record.SyncedLyrics ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$updated_at", record.UpdatedAt.ToString("O"));
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
