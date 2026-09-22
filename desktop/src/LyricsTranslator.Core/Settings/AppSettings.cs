@@ -20,10 +20,19 @@ public sealed class AppSettings
     [JsonIgnore]
     public string? ApiKey { get; set; }
 
+    public const string DefaultClaudeModel = "claude-sonnet-4-5";
+    public const string DefaultOpenAiModel = "gpt-4o";
+
+    /// <summary>Free-tier friendly default for Google AI Studio keys.</summary>
+    public const string DefaultGeminiModel = "gemini-2.5-flash";
+
     public string EffectiveModel =>
         !string.IsNullOrWhiteSpace(Model)
             ? Model.Trim()
-            : AiProvider == AiProvider.OpenAI
-                ? "gpt-4o"
-                : "claude-sonnet-4-5";
+            : AiProvider switch
+            {
+                AiProvider.OpenAI => DefaultOpenAiModel,
+                AiProvider.Gemini => DefaultGeminiModel,
+                _ => DefaultClaudeModel,
+            };
 }

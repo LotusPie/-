@@ -33,7 +33,8 @@ public sealed class LyricsPipeline
         }
 
         var cached = await _cache.GetAsync(query.CacheKey, cancellationToken).ConfigureAwait(false);
-        if (cached is { OriginalLyrics: { Length: > 0 }, Translation: { Length: > 0 } })
+        if (cached is { OriginalLyrics: { Length: > 0 }, Translation: { Length: > 0 } } &&
+            !IsStaleChineseMisdetect(cached))
         {
             return ToDisplay(query, cached.OriginalLyrics, cached.Translation, cached.OriginalSource, cached.TranslationSource, LyricsStatus.Ready, null);
         }
@@ -101,7 +102,8 @@ public sealed class LyricsPipeline
             return ToDisplay(query, original, original, originalSource, originalSource, LyricsStatus.Ready, "原文已是繁體中文。");
         }
 
-        if (!string.IsNullOrWhiteSpace(cached?.Translation))
+        if (!string.IsNullOrWhiteSpace(cached?.Translation) &&
+            !IsStaleChineseMisdetect(cached))
         {
             return ToDisplay(query, original, cached.Translation, originalSource, cached.TranslationSource, LyricsStatus.Ready, null);
         }
@@ -168,7 +170,7 @@ public sealed class LyricsPipeline
                 originalSource,
                 LyricsSource.None,
                 LyricsStatus.NeedsApiKey,
-                "已有原文，但還沒有 API 金鑰。到設定貼上 Claude 或 OpenAI 金鑰後再譯。");
+                "已有原文，但還沒有 API 金鑰。到設定貼上 Claude、OpenAI 或 Gemini 金鑰後再譯。");
         }
 
         string translated;
@@ -241,4 +243,12 @@ public sealed class LyricsPipeline
         string? translation,
         LyricsSource translationSource,
         string message) => ToDisplay(query, original, translation, originalSource, translationSource, LyricsStatus.Error, message);
+
+    /// <summary>
+    /// Older builds cached Japanese originals as their own "translation" after a 繁中 false positive.
+    /// Identical original/translation is only a finished result when the text really is 繁中.
+    /// </summary>
+    private static bool IsStaleChineseMisdetect(CachedLyrics cached) =>
+        string.Equals(cached.OriginalLyrics, cached.Translation, StringComparison.Ordinal) &&
+        !LanguageDetector.LooksLikeAlreadyTaiwanMandarinLyrics(cached.OriginalLyrics);
 }

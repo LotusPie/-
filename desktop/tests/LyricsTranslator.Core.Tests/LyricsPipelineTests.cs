@@ -115,7 +115,7 @@ public class LyricsPipelineTests
             {
                 TrackName = "歌",
                 ArtistName = "人",
-                PlainLyrics = "這是繁體歌詞\n我不離開",
+                PlainLyrics = "這是繁體歌詞\n我不離開\n你的眼睛為什麼還不說",
             }),
             translator,
             apiKey: "sk-test");
@@ -125,6 +125,62 @@ public class LyricsPipelineTests
         Assert.False(translator.WasCalled);
         Assert.Equal(result.OriginalLyrics, result.Translation);
         Assert.Equal("社群／LRCLIB", result.SourceLabel);
+    }
+
+    [Fact]
+    public async Task Japanese_lyrics_are_sent_to_ai()
+    {
+        const string japanese =
+            """
+            夜に駆ける
+            君の瞳に恋をして
+            愛してる
+            時を超えて
+            """;
+        var translator = new RecordingTranslator { Translation = "在夜裡奔馳" };
+        var pipeline = Create(
+            new StubLrclib(new LrclibTrack
+            {
+                TrackName = "夜に駆ける",
+                ArtistName = "YOASOBI",
+                PlainLyrics = japanese,
+            }),
+            translator,
+            apiKey: "sk-test");
+
+        var result = await pipeline.ResolveAsync(Song("夜に駆ける", "YOASOBI"), CancellationToken.None);
+
+        Assert.True(translator.WasCalled);
+        Assert.Equal(japanese, result.OriginalLyrics);
+        Assert.Equal("在夜裡奔馳", result.Translation);
+        Assert.Equal("社群／LRCLIB → AI", result.SourceLabel);
+    }
+
+    [Fact]
+    public async Task Stale_japanese_as_chinese_cache_is_retried_with_ai()
+    {
+        const string japanese = "愛してる\n時を超えて";
+        var cache = new MemoryLyricsCache();
+        var query = Song("夜に駆ける", "YOASOBI");
+        await cache.UpsertAsync(new CachedLyrics
+        {
+            CacheKey = query.CacheKey,
+            Title = query.DisplayTitle,
+            Artist = query.DisplayArtist,
+            OriginalLyrics = japanese,
+            OriginalSource = LyricsSource.Lrclib,
+            Translation = japanese,
+            TranslationSource = LyricsSource.Lrclib,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+
+        var translator = new RecordingTranslator { Translation = "我愛你" };
+        var pipeline = new LyricsPipeline(cache, new MissLrclib(), () => translator, () => new AppSettings { ApiKey = "sk-test" });
+
+        var result = await pipeline.ResolveAsync(query, CancellationToken.None);
+
+        Assert.True(translator.WasCalled);
+        Assert.Equal("我愛你", result.Translation);
     }
 
     private static LyricsPipeline Create(ILrclibClient lrclib, ILyricsTranslator translator, string? apiKey) =>

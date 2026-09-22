@@ -19,6 +19,7 @@ public enum AiProvider
 {
     Claude,
     OpenAI,
+    Gemini,
 }
 
 public enum LyricsSource

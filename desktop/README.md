@@ -18,7 +18,7 @@
 - 系統匣 + 小視窗（原文／繁中並排、來源標籤）
 - SMTC 列舉工作階段，過濾 Apple Music 與瀏覽器；可用設定釘選
 - LRCLIB 查原文 + SQLite 本機快取
-- 有原文、沒有人工繁中時，用你自己的 Claude 或 OpenAI 金鑰翻譯
+- 有原文、沒有人工繁中時，用你自己的 Claude、OpenAI 或 **Gemini** 金鑰翻譯
 - 找不到原文時**不發明歌詞**，只讓你貼上原文再譯
 - 設定：API 金鑰（DPAPI 保護）、模型名稱、播放來源釘選
 
@@ -55,9 +55,13 @@ Visual Studio：開啟 `desktop\LyricsTranslator.sln`，將 `LyricsTranslator.Ap
 ## API 金鑰放哪裡
 
 1. 啟動應用 → **設定**
-2. 選 Claude 或 OpenAI，貼上你的金鑰
-3. 可留空模型名稱（預設 Claude `claude-sonnet-4-5`、OpenAI `gpt-4o`）
-4. 儲存
+2. 供應商選 **Claude**、**OpenAI** 或 **Gemini**
+3. 貼上你的金鑰（Gemini 用 [Google AI Studio](https://aistudio.google.com/apikey) 的免費 API key）
+4. 可留空模型名稱。預設：
+   - Claude：`claude-sonnet-4-5`
+   - OpenAI：`gpt-4o`
+   - Gemini：`gemini-2.5-flash`（2026 年免費額度友善的 Flash；若碰到額度再改成 `gemini-2.0-flash` 或 `gemini-2.5-flash-lite`）
+5. 儲存
 
 金鑰以目前 Windows 使用者 DPAPI 寫入：
 

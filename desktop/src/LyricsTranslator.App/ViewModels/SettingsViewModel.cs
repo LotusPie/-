@@ -13,7 +13,12 @@ public partial class SettingsViewModel : ObservableObject
     {
         _store = store;
         var current = store.Snapshot();
-        ProviderIndex = current.AiProvider == AiProvider.OpenAI ? 1 : 0;
+        ProviderIndex = current.AiProvider switch
+        {
+            AiProvider.OpenAI => 1,
+            AiProvider.Gemini => 2,
+            _ => 0,
+        };
         ApiKey = current.ApiKey ?? string.Empty;
         Model = current.Model;
         PlayerPinIndex = current.PlayerPin switch
@@ -37,7 +42,12 @@ public partial class SettingsViewModel : ObservableObject
     {
         var settings = new AppSettings
         {
-            AiProvider = ProviderIndex == 1 ? AiProvider.OpenAI : AiProvider.Claude,
+            AiProvider = ProviderIndex switch
+            {
+                1 => AiProvider.OpenAI,
+                2 => AiProvider.Gemini,
+                _ => AiProvider.Claude,
+            },
             ApiKey = string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(),
             Model = Model.Trim(),
             PlayerPin = PlayerPinIndex switch
