@@ -16,6 +16,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly SettingsStore _settings;
     private readonly AppWindow _appWindow;
+    private OverlayWindow? _overlay;
     private bool _allowClose;
     private SettingsWindow? _settingsWindow;
 
@@ -37,7 +38,15 @@ public sealed partial class MainWindow : Window
         TrayIcon.LeftClickCommand = ShowWindowCommand;
         TrayIcon.ForceCreate();
 
-        ViewModel.CurrentLineChanged += (_, _) => ScrollCurrentLine();
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MainViewModel.OverlayShouldShow)
+                or nameof(MainViewModel.HasLyricLines)
+                or nameof(MainViewModel.OverlayEnabled))
+            {
+                SyncOverlayVisibility();
+            }
+        };
 
         nowPlaying.SessionChanged += async (_, session) =>
         {
@@ -56,6 +65,8 @@ public sealed partial class MainWindow : Window
                 // ignored
             }
         };
+
+        SyncOverlayVisibility();
     }
 
     public MainViewModel ViewModel { get; }
@@ -66,39 +77,32 @@ public sealed partial class MainWindow : Window
 
     public Visibility BoolVis(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
-    public Visibility InvertVis(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
-
     public Visibility NonEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
 
     public string PauseLabel(bool paused) => paused ? "繼續偵測" : "暫停偵測";
 
-    private void ScrollCurrentLine()
-    {
-        try
-        {
-            if (LyricList.Items.Count == 0)
-            {
-                return;
-            }
+    public string OverlayLabel(bool enabled) => enabled ? "隱藏浮窗" : "顯示浮窗";
 
-            var index = Math.Clamp(ViewModel.CurrentLineIndex, 0, LyricList.Items.Count - 1);
-            if (LyricList.Items[index] is LyricLineItem item)
-            {
-                LyricList.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
-            }
-        }
-        catch
+    private void SyncOverlayVisibility()
+    {
+        if (ViewModel.OverlayShouldShow)
         {
-            // List may be rebuilding.
+            _overlay ??= new OverlayWindow(ViewModel);
+            _overlay.ShowQuietly();
+            return;
         }
+
+        _overlay?.HideQuietly();
     }
 
     private MenuFlyout BuildTrayMenu()
     {
         var menu = new MenuFlyout();
-        var show = new MenuFlyoutItem { Text = "顯示視窗" };
+        var show = new MenuFlyoutItem { Text = "顯示主視窗" };
         show.Click += (_, _) => ShowFromTray();
+        var overlay = new MenuFlyoutItem { Text = "顯示／隱藏歌詞浮窗" };
+        overlay.Click += (_, _) => ViewModel.ToggleOverlayCommand.Execute(null);
         var pause = new MenuFlyoutItem { Text = "暫停／繼續偵測" };
         pause.Click += (_, _) => ViewModel.ToggleDetectionCommand.Execute(null);
         var settings = new MenuFlyoutItem { Text = "設定" };
@@ -106,6 +110,7 @@ public sealed partial class MainWindow : Window
         var exit = new MenuFlyoutItem { Text = "結束" };
         exit.Click += (_, _) => ExitApp();
         menu.Items.Add(show);
+        menu.Items.Add(overlay);
         menu.Items.Add(pause);
         menu.Items.Add(settings);
         menu.Items.Add(new MenuFlyoutSeparator());

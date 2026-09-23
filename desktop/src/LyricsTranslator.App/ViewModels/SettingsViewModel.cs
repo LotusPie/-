@@ -57,6 +57,7 @@ public partial class SettingsViewModel : ObservableObject
                 _ => PlayerPin.Auto,
             },
             DetectionPaused = DetectionPaused,
+            OverlayEnabled = _store.Snapshot().OverlayEnabled,
         };
         _store.Save(settings);
         Status = "已儲存。";

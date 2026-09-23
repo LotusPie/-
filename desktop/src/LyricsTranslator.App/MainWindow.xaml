@@ -6,7 +6,6 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:tb="using:H.NotifyIcon"
-    xmlns:vm="using:LyricsTranslator.ViewModels"
     mc:Ignorable="d"
     Title="歌詞翻譯">
 
@@ -40,6 +39,8 @@
                         Visibility="{x:Bind NonEmpty(ViewModel.SourceLabel), Mode=OneWay}">
                     <TextBlock Text="{x:Bind ViewModel.SourceLabel, Mode=OneWay}" FontSize="12" Foreground="#102027"/>
                 </Border>
+                <Button Content="{x:Bind OverlayLabel(ViewModel.OverlayEnabled), Mode=OneWay}"
+                        Command="{x:Bind ViewModel.ToggleOverlayCommand}"/>
                 <Button Content="設定" Click="OpenSettings_Click"/>
                 <Button Content="{x:Bind PauseLabel(ViewModel.DetectionPaused), Mode=OneWay}"
                         Command="{x:Bind ViewModel.ToggleDetectionCommand}"/>
@@ -56,87 +57,30 @@
             </StackPanel>
         </StackPanel>
 
-        <Grid Grid.Row="2">
-            <Grid Visibility="{x:Bind BoolVis(ViewModel.HasLyricLines), Mode=OneWay}">
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <Grid ColumnSpacing="12" Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="原文" FontWeight="SemiBold"/>
-                    <TextBlock Grid.Column="1" Text="繁中" FontWeight="SemiBold"/>
-                </Grid>
-                <ListView x:Name="LyricList"
-                          Grid.Row="1"
-                          ItemsSource="{x:Bind ViewModel.LyricLines, Mode=OneWay}"
-                          SelectionMode="None"
-                          IsItemClickEnabled="False"
-                          Background="#12151C">
-                    <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                            <Setter Property="Padding" Value="0"/>
-                            <Setter Property="MinHeight" Value="0"/>
-                            <Setter Property="Margin" Value="0"/>
-                        </Style>
-                    </ListView.ItemContainerStyle>
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:LyricLineItem">
-                            <Border BorderBrush="#2EC4B6"
-                                    BorderThickness="{x:Bind AccentThickness, Mode=OneWay}"
-                                    Padding="12,6"
-                                    Background="Transparent">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{x:Bind Original, Mode=OneWay}"
-                                               TextWrapping="Wrap"
-                                               IsTextSelectionEnabled="True"
-                                               Opacity="{x:Bind LineOpacity, Mode=OneWay}"
-                                               FontSize="{x:Bind FontSize, Mode=OneWay}"/>
-                                    <TextBlock Grid.Column="1"
-                                               Text="{x:Bind Translation, Mode=OneWay}"
-                                               TextWrapping="Wrap"
-                                               IsTextSelectionEnabled="True"
-                                               Opacity="{x:Bind LineOpacity, Mode=OneWay}"
-                                               FontSize="{x:Bind FontSize, Mode=OneWay}"/>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
+                <TextBlock Text="原文" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <ScrollViewer Grid.Row="1" Background="#12151C" Padding="10">
+                    <TextBlock Text="{x:Bind ViewModel.OriginalLyrics, Mode=OneWay}" TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"/>
+                </ScrollViewer>
             </Grid>
-            <Grid Visibility="{x:Bind InvertVis(ViewModel.HasLyricLines), Mode=OneWay}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="原文" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                    <ScrollViewer Grid.Row="1" Background="#12151C" Padding="10">
-                        <TextBlock Text="{x:Bind ViewModel.OriginalLyrics, Mode=OneWay}" TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"/>
-                    </ScrollViewer>
-                </Grid>
-                <Grid Grid.Column="1">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="繁中" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                    <ScrollViewer Grid.Row="1" Background="#12151C" Padding="10">
-                        <TextBlock Text="{x:Bind ViewModel.TranslatedLyrics, Mode=OneWay}" TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"/>
-                    </ScrollViewer>
-                </Grid>
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="繁中" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <ScrollViewer Grid.Row="1" Background="#12151C" Padding="10">
+                    <TextBlock Text="{x:Bind ViewModel.TranslatedLyrics, Mode=OneWay}" TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"/>
+                </ScrollViewer>
             </Grid>
         </Grid>
 

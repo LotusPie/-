@@ -17,6 +17,9 @@ public sealed class AppSettings
 
     public bool DetectionPaused { get; set; }
 
+    /// <summary>Always-on-top karaoke overlay. Missing JSON (old settings) is treated as on.</summary>
+    public bool OverlayEnabled { get; set; } = true;
+
     [JsonIgnore]
     public string? ApiKey { get; set; }
 

@@ -30,12 +30,17 @@ public partial class MainViewModel : ObservableObject
         _settings = settings;
         _dispatcher = dispatcher;
         DetectionPaused = settings.Snapshot().DetectionPaused;
+        OverlayEnabled = settings.Snapshot().OverlayEnabled;
         Apply(LyricsDisplay.Idle("未偵測到 Apple Music 或瀏覽器裡的 YouTube Music。"));
     }
 
     public ObservableCollection<LyricLineItem> LyricLines { get; } = [];
 
+    public ObservableCollection<LyricLineItem> OverlayLines { get; } = [];
+
     public event EventHandler<int>? CurrentLineChanged;
+
+    public bool OverlayShouldShow => OverlayEnabled && HasLyricLines;
 
     [ObservableProperty] private string _title = "未在播放";
     [ObservableProperty] private string _artist = string.Empty;
@@ -54,6 +59,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _detectionPaused;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _hasLyricLines;
+    [ObservableProperty] private bool _overlayEnabled = true;
     [ObservableProperty] private int _currentLineIndex;
 
     public async Task OnSessionChangedAsync(NowPlayingSession? session)
@@ -132,6 +138,12 @@ public partial class MainViewModel : ObservableObject
         }
 
         await RunAsync(ct => _pipeline.ResolveAsync(_currentQuery, ct), _currentQuery).ConfigureAwait(false);
+    }
+
+    [RelayCommand]
+    private void ToggleOverlay()
+    {
+        OverlayEnabled = !OverlayEnabled;
     }
 
     [RelayCommand]
@@ -260,17 +272,20 @@ public partial class MainViewModel : ObservableObject
 
         HasLyricLines = LyricLines.Count > 0;
         CurrentLineIndex = -1;
+        NotifyOverlayVisibility();
     }
 
     private void HighlightCurrentLine()
     {
         if (LyricLines.Count == 0)
         {
+            OverlayLines.Clear();
             if (CurrentLineIndex != 0)
             {
                 CurrentLineIndex = 0;
             }
 
+            NotifyOverlayVisibility();
             return;
         }
 
@@ -284,9 +299,43 @@ public partial class MainViewModel : ObservableObject
 
         if (changed)
         {
+            RebuildOverlaySlice(index);
             CurrentLineChanged?.Invoke(this, index);
         }
     }
+
+    private void RebuildOverlaySlice(int index)
+    {
+        OverlayLines.Clear();
+        if (LyricLines.Count == 0)
+        {
+            return;
+        }
+
+        var start = Math.Max(0, index - 2);
+        var end = Math.Min(LyricLines.Count - 1, index + 2);
+        for (var i = start; i <= end; i++)
+        {
+            var source = LyricLines[i];
+            var item = new LyricLineItem
+            {
+                Original = source.Original,
+                Translation = source.Translation,
+            };
+            item.ApplyWindow(Math.Abs(i - index));
+            OverlayLines.Add(item);
+        }
+    }
+
+    partial void OnHasLyricLinesChanged(bool value) => NotifyOverlayVisibility();
+
+    partial void OnOverlayEnabledChanged(bool value)
+    {
+        _settings.SetOverlayEnabled(value);
+        NotifyOverlayVisibility();
+    }
+
+    private void NotifyOverlayVisibility() => OnPropertyChanged(nameof(OverlayShouldShow));
 
     private static string FormatPosition(TimeSpan position, TimeSpan? duration)
     {

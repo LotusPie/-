@@ -1,6 +1,6 @@
 # 歌詞翻譯（Windows 桌面 v1）
 
-聽 **Apple Music**（Microsoft Store）或瀏覽器裡的 **YouTube Music** 時，系統匣小視窗顯示歌名、原文、台灣繁體譯詞，並標示來源（巴哈姆特、社群／LRCLIB、AI、手貼）。播放中歌詞會跟著走。
+聽 **Apple Music**（Microsoft Store）或瀏覽器裡的 **YouTube Music** 時，系統匣主視窗顯示歌名、全文原文／繁中；另有一個**永遠在最上層、可拖曳的歌詞浮窗**跟著播放走。
 
 這是**個人本機工具**，不是 Microsoft Store 應用。不要把歌詞庫散佈出去。
 
@@ -17,8 +17,8 @@
 
 已接上：
 
-- 系統匣 + 小視窗（原文／繁中並排、來源標籤）
-- 卡拉 OK 式移動視窗：現在行較醒目；有 LRC 就跟時間軸，沒有就依 SMTC 進度捲動
+- 系統匣 + 主視窗（全文原文／繁中並排、來源標籤）
+- **歌詞浮窗（移動視窗）**：永遠最上層、可拖曳；現在行放大、前後行淡出。有 LRC 跟時間軸，沒有就依 SMTC 進度
 - SMTC 列舉工作階段，過濾 Apple Music 與瀏覽器；可用設定釘選
 - 日文歌先查巴哈姆特創作大廳的社群繁中譯詞（本機快取，不內建歌詞庫）
 - LRCLIB 查原文／LRC + SQLite 本機快取
@@ -57,6 +57,8 @@ dotnet publish .\src\LyricsTranslator.App\LyricsTranslator.App.csproj -c Release
 ```
 
 輸出在 `src\LyricsTranslator.App\bin\publish\win-x64\`。執行 `LyricsTranslator.exe`。
+
+有歌詞時會自動跳出**歌詞浮窗**（預設開）。抓上方「移動歌詞 · 拖曳這裡」可拖到螢幕任意位置。主視窗或系統匣選「顯示／隱藏歌詞浮窗」；浮窗 ✕ 只是隱藏，不會結束程式。關掉主視窗進系統匣時，浮窗仍會留在最上層。
 
 Visual Studio：開啟 `desktop\LyricsTranslator.sln`，將 `LyricsTranslator.App` 設為起始專案，偵錯設定選 **LyricsTranslator (Unpackaged)**。
 
