@@ -179,7 +179,13 @@ public sealed class LyricsPipeline
         }
 
         var cached = await _cache.GetAsync(query.CacheKey, cancellationToken).ConfigureAwait(false);
-        return await TranslateAndStoreAsync(query, original, LyricsSource.Paste, cached?.LrclibId, previous: null, hint: null, cached?.SyncedLyrics, cancellationToken)
+        var synced = cached?.SyncedLyrics;
+        if (string.IsNullOrWhiteSpace(synced))
+        {
+            synced = await TrySyncedFromLrclibAsync(query, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await TranslateAndStoreAsync(query, original, LyricsSource.Paste, cached?.LrclibId, previous: null, hint: null, synced, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -194,6 +200,12 @@ public sealed class LyricsPipeline
             return ToDisplay(query, null, null, LyricsSource.None, LyricsSource.None, LyricsStatus.NeedsPaste, "沒有原文，無法重譯。");
         }
 
+        var synced = cached.SyncedLyrics;
+        if (string.IsNullOrWhiteSpace(synced))
+        {
+            synced = await TrySyncedFromLrclibAsync(query, cancellationToken).ConfigureAwait(false);
+        }
+
         return await TranslateAndStoreAsync(
                 query,
                 cached.OriginalLyrics,
@@ -201,7 +213,7 @@ public sealed class LyricsPipeline
                 cached.LrclibId,
                 cached.Translation,
                 hint,
-                cached.SyncedLyrics,
+                synced,
                 cancellationToken)
             .ConfigureAwait(false);
     }

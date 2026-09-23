@@ -19,7 +19,7 @@ public sealed partial class SettingsWindow : Window
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new Windows.Graphics.SizeInt32(560, 640));
+        appWindow.Resize(new Windows.Graphics.SizeInt32(560, 780));
         Title = "設定";
     }
 

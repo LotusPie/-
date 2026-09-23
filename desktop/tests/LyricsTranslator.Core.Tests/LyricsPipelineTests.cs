@@ -183,6 +183,27 @@ public class LyricsPipelineTests
     }
 
     [Fact]
+    public async Task Paste_asks_lrclib_for_synced_when_cache_has_none()
+    {
+        var translator = new RecordingTranslator { Translation = "手貼譯文" };
+        var pipeline = Create(
+            new StubLrclib(new LrclibTrack
+            {
+                TrackName = "X",
+                ArtistName = "Y",
+                SyncedLyrics = "[00:03.00] pasted line",
+            }),
+            translator,
+            apiKey: "sk-test");
+
+        var result = await pipeline.ApplyPastedOriginalAsync(Song("X", "Y"), "pasted line", CancellationToken.None);
+
+        Assert.Equal(LyricsStatus.Ready, result.Status);
+        Assert.Equal("[00:03.00] pasted line", result.SyncedLyrics);
+        Assert.Equal("手貼譯文", result.Translation);
+    }
+
+    [Fact]
     public async Task Missing_api_key_keeps_original_and_asks_for_key()
     {
         var pipeline = Create(

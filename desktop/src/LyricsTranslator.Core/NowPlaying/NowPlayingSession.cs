@@ -10,10 +10,17 @@ public sealed record NowPlayingSession(
     TimeSpan? Duration,
     TimeSpan Position,
     bool IsPlaying,
-    PlayerKind PlayerKind)
+    PlayerKind PlayerKind,
+    double PlaybackRate = 1.0,
+    DateTimeOffset? TimelineLastUpdated = null)
 {
     public bool HasTrackMetadata =>
         !string.IsNullOrWhiteSpace(Title);
 }
 
-public sealed record PlaybackProgress(TimeSpan Position, TimeSpan? Duration, bool IsPlaying);
+public sealed record PlaybackProgress(
+    TimeSpan Position,
+    TimeSpan? Duration,
+    bool IsPlaying,
+    double PlaybackRate = 1.0,
+    DateTimeOffset? LastUpdated = null);

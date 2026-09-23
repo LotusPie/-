@@ -28,6 +28,7 @@ public partial class SettingsViewModel : ObservableObject
             _ => 0,
         };
         DetectionPaused = current.DetectionPaused;
+        SyncOffsetSeconds = current.SyncOffsetSeconds;
     }
 
     [ObservableProperty] private int _providerIndex;
@@ -35,6 +36,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _model = string.Empty;
     [ObservableProperty] private int _playerPinIndex;
     [ObservableProperty] private bool _detectionPaused;
+    [ObservableProperty] private double _syncOffsetSeconds;
     [ObservableProperty] private string _status = "金鑰只存在這台電腦，不會寫進程式或上傳。";
 
     [RelayCommand]
@@ -58,8 +60,10 @@ public partial class SettingsViewModel : ObservableObject
             },
             DetectionPaused = DetectionPaused,
             OverlayEnabled = _store.Snapshot().OverlayEnabled,
+            SyncOffsetSeconds = AppSettings.ClampSyncOffset(SyncOffsetSeconds),
         };
         _store.Save(settings);
+        SyncOffsetSeconds = settings.SyncOffsetSeconds;
         Status = "已儲存。";
     }
 }

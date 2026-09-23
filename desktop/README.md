@@ -18,7 +18,8 @@
 已接上：
 
 - 系統匣 + 主視窗（全文原文／繁中並排、來源標籤）
-- **歌詞浮窗（移動視窗）**：永遠最上層、可拖曳；現在行放大、前後行淡出。有 LRC 跟時間軸，沒有就依 SMTC 進度
+- **歌詞浮窗（移動視窗）**：永遠最上層、可拖曳；現在行放大、前後行淡出。**有 LRC 就對時間戳對到畫面上的繁中行**（譯詞行數不同會依時間／索引對齊，不會用整首歌等分）。沒有 LRC 不會用進度比例亂跳。設定可調 **同步偏移（秒）**（預設 0）
+- SMTC 列舉工作階段，過濾 Apple Music 與瀏覽器；可用設定釘選。進度用 Position + PlaybackRate + LastUpdated 每 100ms 內插，Apple Music 的假 Paused／缺時間軸會另外處理。
 - SMTC 列舉工作階段，過濾 Apple Music 與瀏覽器；可用設定釘選
 - 日文歌先查巴哈姆特創作大廳的社群繁中譯詞（本機快取，不內建歌詞庫）
 - LRCLIB 查原文／LRC + SQLite 本機快取
@@ -99,7 +100,7 @@ LRCLIB 要求 `User-Agent`；本應用使用 `LyricsTranslator/1.0`。巴哈姆�
 - **Apple Music**：Store App 的 SMTC。會拆 `歌手 — 專輯`，且不盲信 Paused。
 - **YouTube Music**：Chrome / Edge / Firefox 等瀏覽器的 Media Session。SMTC **沒有網址**，無法保證一定是 `music.youtube.com`。請在設定釘選「只跟瀏覽器」或「只跟 Apple Music」。
 - 列舉 `GetSessions()`，不盲信 `GetCurrentSession()`。
-- 歌詞視窗用 SMTC `Position`／`EndTime`；有 LRC 就對時間戳，沒有就用進度比例捲動。
+- 歌詞視窗用 SMTC `Position` + `PlaybackRate` + `LastUpdatedTime` 每 ~100ms 內插成播放頭；有 LRC 就把時間戳對到**畫面上的繁中行**（行數不同時依索引把 LRC 時間拉開／收攏）。沒有 LRC **不會**用整首歌等分時長。SMTC 比聲音慢時，到設定調「同步偏移（秒）」，預設 0。
 
 ## 授權姿態
 

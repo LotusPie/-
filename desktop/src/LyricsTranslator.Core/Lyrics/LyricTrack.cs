@@ -13,55 +13,110 @@ public static class LyricTrack
             ? timedOriginal.Select(l => l.Text).ToList()
             : Split(original);
         var translationLines = Split(translation);
-        var count = Math.Max(originalLines.Count, translationLines.Count);
-        if (count == 0)
+        var displayCount = translationLines.Count > 0
+            ? translationLines.Count
+            : timedOriginal.Count > 0
+                ? timedOriginal.Count
+                : originalLines.Count;
+        if (displayCount == 0)
         {
             return [];
         }
 
-        var result = new TimedLyric[count];
-        for (var i = 0; i < count; i++)
+        var result = new TimedLyric[displayCount];
+        for (var j = 0; j < displayCount; j++)
         {
-            TimeSpan? ts = i < timedOriginal.Count ? timedOriginal[i].Timestamp : null;
-            var orig = i < originalLines.Count ? originalLines[i] : string.Empty;
-            var tran = i < translationLines.Count ? translationLines[i] : string.Empty;
-            result[i] = new TimedLyric(ts, orig, tran);
+            var tran = j < translationLines.Count ? translationLines[j] : string.Empty;
+            var orig = MapOriginal(originalLines, timedOriginal, j, displayCount);
+            var ts = MapTimestamp(timedOriginal, j, displayCount);
+            result[j] = new TimedLyric(ts, orig, tran);
         }
 
         return result;
     }
 
-    public static int IndexAt(
-        IReadOnlyList<TimedLyric> lines,
-        TimeSpan position,
-        TimeSpan? duration)
+    /// <summary>
+    /// Last displayed line whose LRC-mapped timestamp is ≤ position.
+    /// Does not invent equal-duration slices when there is no time axis.
+    /// </summary>
+    public static int IndexAt(IReadOnlyList<TimedLyric> lines, TimeSpan position)
     {
         if (lines.Count == 0)
         {
             return 0;
         }
 
-        if (lines.Any(l => l.Timestamp is not null))
+        var idx = 0;
+        var found = false;
+        for (var i = 0; i < lines.Count; i++)
         {
-            var idx = 0;
-            for (var i = 0; i < lines.Count; i++)
+            if (lines[i].Timestamp is { } ts && ts <= position)
             {
-                if (lines[i].Timestamp is { } ts && ts <= position)
-                {
-                    idx = i;
-                }
+                idx = i;
+                found = true;
             }
-
-            return idx;
         }
 
-        if (duration is { TotalMilliseconds: > 0 })
+        return found ? idx : 0;
+    }
+
+    private static TimeSpan? MapTimestamp(IReadOnlyList<LrcParser.Line> lrc, int displayIndex, int displayCount)
+    {
+        if (lrc.Count == 0)
         {
-            var ratio = Math.Clamp(position.TotalMilliseconds / duration.Value.TotalMilliseconds, 0, 0.999);
-            return Math.Min(lines.Count - 1, (int)(ratio * lines.Count));
+            return null;
         }
 
-        return 0;
+        if (displayCount <= 1)
+        {
+            return lrc[0].Timestamp;
+        }
+
+        if (lrc.Count == 1)
+        {
+            return displayIndex == 0 ? lrc[0].Timestamp : null;
+        }
+
+        var src = displayIndex * (lrc.Count - 1) / (double)(displayCount - 1);
+        var lo = (int)Math.Floor(src);
+        lo = Math.Clamp(lo, 0, lrc.Count - 1);
+        var hi = Math.Min(lo + 1, lrc.Count - 1);
+        var frac = src - lo;
+        if (hi == lo || frac <= 0)
+        {
+            return lrc[lo].Timestamp;
+        }
+
+        var a = lrc[lo].Timestamp.Ticks;
+        var b = lrc[hi].Timestamp.Ticks;
+        return TimeSpan.FromTicks(a + (long)((b - a) * frac));
+    }
+
+    private static string MapOriginal(
+        IReadOnlyList<string> originalLines,
+        IReadOnlyList<LrcParser.Line> lrc,
+        int displayIndex,
+        int displayCount)
+    {
+        if (originalLines.Count == displayCount)
+        {
+            return originalLines[displayIndex];
+        }
+
+        if (lrc.Count == 0)
+        {
+            return displayIndex < originalLines.Count ? originalLines[displayIndex] : string.Empty;
+        }
+
+        if (lrc.Count == 1 || displayCount <= 1)
+        {
+            return lrc[0].Text;
+        }
+
+        var src = displayIndex * (lrc.Count - 1) / (double)(displayCount - 1);
+        var nearest = (int)Math.Round(src, MidpointRounding.AwayFromZero);
+        nearest = Math.Clamp(nearest, 0, lrc.Count - 1);
+        return lrc[nearest].Text;
     }
 
     private static List<string> Split(string? text)

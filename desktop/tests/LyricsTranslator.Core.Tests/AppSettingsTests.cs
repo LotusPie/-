@@ -35,6 +35,38 @@ public class AppSettingsTests
             store.Save(snapshot);
             store.Load();
             Assert.False(store.Snapshot().OverlayEnabled);
+            Assert.Equal(0, store.Snapshot().SyncOffsetSeconds);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void Sync_offset_defaults_zero_and_round_trips()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "lyrics-translator-tests", Guid.NewGuid() + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        try
+        {
+            var store = new SettingsStore(path, new PassThroughSecretProtector());
+            store.Load();
+            Assert.Equal(0, store.Snapshot().SyncOffsetSeconds);
+
+            var snapshot = store.Snapshot();
+            snapshot.SyncOffsetSeconds = 1.5;
+            store.Save(snapshot);
+            store.Load();
+            Assert.Equal(1.5, store.Snapshot().SyncOffsetSeconds);
+
+            snapshot = store.Snapshot();
+            snapshot.SyncOffsetSeconds = 99;
+            store.Save(snapshot);
+            Assert.Equal(10, store.Snapshot().SyncOffsetSeconds);
         }
         finally
         {

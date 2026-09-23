@@ -50,6 +50,7 @@ public sealed class SettingsStore
             var json = File.ReadAllText(_path);
             var loaded = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
             loaded.ApiKey = UnprotectSafe(loaded.ProtectedApiKey);
+            loaded.SyncOffsetSeconds = AppSettings.ClampSyncOffset(loaded.SyncOffsetSeconds);
             using (var doc = JsonDocument.Parse(json))
             {
                 if (!doc.RootElement.TryGetProperty("overlayEnabled", out _))
@@ -71,6 +72,7 @@ public sealed class SettingsStore
                 ? string.Empty
                 : _protector.Protect(settings.ApiKey);
             toStore.ApiKey = settings.ApiKey;
+            toStore.SyncOffsetSeconds = AppSettings.ClampSyncOffset(toStore.SyncOffsetSeconds);
             var json = JsonSerializer.Serialize(new AppSettings
             {
                 AiProvider = toStore.AiProvider,
@@ -79,6 +81,7 @@ public sealed class SettingsStore
                 PlayerPin = toStore.PlayerPin,
                 DetectionPaused = toStore.DetectionPaused,
                 OverlayEnabled = toStore.OverlayEnabled,
+                SyncOffsetSeconds = toStore.SyncOffsetSeconds,
             }, JsonOptions);
             File.WriteAllText(_path, json);
             _current = toStore;
@@ -126,6 +129,7 @@ public sealed class SettingsStore
         PlayerPin = source.PlayerPin,
         DetectionPaused = source.DetectionPaused,
         OverlayEnabled = source.OverlayEnabled,
+        SyncOffsetSeconds = AppSettings.ClampSyncOffset(source.SyncOffsetSeconds),
         ApiKey = source.ApiKey,
     };
 }

@@ -18,6 +18,24 @@ public class LrclibRankingTests
     }
 
     [Fact]
+    public void Prefers_synced_lyrics_when_title_matches()
+    {
+        var query = TrackNormalizer.FromRaw("Stay", "The Kid LAROI", null, TimeSpan.FromSeconds(141), "chrome", PlayerKind.Browser, true);
+        var plainOnly = new LrclibTrack { TrackName = "Stay", ArtistName = "The Kid LAROI", Duration = 141, PlainLyrics = "plain" };
+        var withLrc = new LrclibTrack
+        {
+            TrackName = "Stay",
+            ArtistName = "The Kid LAROI",
+            Duration = 141,
+            PlainLyrics = "plain",
+            SyncedLyrics = "[00:01.00] plain",
+        };
+
+        var ranked = LrclibClient.Rank([plainOnly, withLrc], query).ToList();
+        Assert.Equal("[00:01.00] plain", ranked[0].SyncedLyrics);
+    }
+
+    [Fact]
     public void Strips_lrc_timestamps()
     {
         var plain = LrclibClient.StripLrcTimestamps("[00:12.00]hello\n[00:15.50]world");

@@ -41,7 +41,10 @@ public sealed partial class LrclibClient : ILrclibClient
         }
 
         var results = await SearchAsync(query, cancellationToken).ConfigureAwait(false);
-        return Rank(results, query).FirstOrDefault(t => t.Instrumental || !string.IsNullOrWhiteSpace(t.EffectivePlainLyrics));
+        return Rank(results, query).FirstOrDefault(t =>
+            t.Instrumental ||
+            !string.IsNullOrWhiteSpace(t.EffectivePlainLyrics) ||
+            !string.IsNullOrWhiteSpace(t.SyncedLyrics));
     }
 
     public async Task<IReadOnlyList<LrclibTrack>> SearchAsync(TrackQuery query, CancellationToken cancellationToken)
@@ -137,6 +140,11 @@ public sealed partial class LrclibClient : ILrclibClient
         if (!string.IsNullOrWhiteSpace(track.EffectivePlainLyrics))
         {
             score += 5;
+        }
+
+        if (!string.IsNullOrWhiteSpace(track.SyncedLyrics))
+        {
+            score += 15;
         }
 
         return score;

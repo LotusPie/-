@@ -20,8 +20,8 @@ public partial class MainViewModel : ObservableObject
     private CancellationTokenSource _cts = new();
     private TrackQuery? _currentQuery;
     private IReadOnlyList<TimedLyric> _track = [];
+    private readonly PlaybackInterpolator _clock = new();
     private TimeSpan _position;
-    private TimeSpan? _duration;
     private int _generation;
 
     public MainViewModel(LyricsPipeline pipeline, SettingsStore settings, DispatcherQueue dispatcher)
@@ -67,13 +67,12 @@ public partial class MainViewModel : ObservableObject
         if (session is null)
         {
             CancelInFlight();
+            _clock.Reset();
             Publish(LyricsDisplay.Idle("未偵測到 Apple Music 或瀏覽器裡的 YouTube Music。可在設定釘選播放來源，或暫停偵測。"));
             _currentQuery = null;
             _track = [];
             return;
         }
-
-        OnProgress(new PlaybackProgress(session.Position, session.Duration, session.IsPlaying));
 
         var query = TrackNormalizer.FromRaw(
             session.Title,
@@ -84,7 +83,20 @@ public partial class MainViewModel : ObservableObject
             session.PlayerKind,
             session.IsPlaying);
 
-        if (_currentQuery is not null && _currentQuery.CacheKey == query.CacheKey && !NeedsPaste && !NeedsApiKey)
+        var sameTrack = _currentQuery is not null && _currentQuery.CacheKey == query.CacheKey;
+        if (!sameTrack)
+        {
+            _clock.Reset();
+        }
+
+        OnProgress(new PlaybackProgress(
+            session.Position,
+            session.Duration,
+            session.IsPlaying,
+            session.PlaybackRate,
+            session.TimelineLastUpdated));
+
+        if (sameTrack && !NeedsPaste && !NeedsApiKey)
         {
             return;
         }
@@ -95,11 +107,15 @@ public partial class MainViewModel : ObservableObject
 
     public void OnProgress(PlaybackProgress progress)
     {
-        _position = progress.Position;
-        _duration = progress.Duration;
+        var now = DateTimeOffset.Now;
+        var interpolated = _clock.Update(progress, now);
+        var offset = TimeSpan.FromSeconds(
+            AppSettings.ClampSyncOffset(_settings.Snapshot().SyncOffsetSeconds));
+        var position = PlaybackClock.ApplyOffset(interpolated, offset, progress.Duration);
+        _position = position;
         _dispatcher.TryEnqueue(() =>
         {
-            PositionLabel = FormatPosition(progress.Position, progress.Duration);
+            PositionLabel = FormatPosition(position, progress.Duration);
             HighlightCurrentLine();
         });
     }
@@ -254,7 +270,7 @@ public partial class MainViewModel : ObservableObject
             ? string.Empty
             : timed
                 ? "依 LRC 時間軸跟隨"
-                : "依播放進度捲動（無時間軸）";
+                : "無 LRC 時間軸（不依等分時長猜測）";
         HighlightCurrentLine();
     }
 
@@ -289,7 +305,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        var index = LyricTrack.IndexAt(_track, _position, _duration);
+        var index = LyricTrack.IndexAt(_track, _position);
         var changed = index != CurrentLineIndex;
         CurrentLineIndex = index;
         for (var i = 0; i < LyricLines.Count; i++)

@@ -29,7 +29,7 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
         _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
         _manager.SessionsChanged += (_, _) => _ = RefreshAsync();
         _manager.CurrentSessionChanged += (_, _) => _ = RefreshAsync();
-        _progressTimer = new Timer(_ => PollProgress(), null, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(200));
+        _progressTimer = new Timer(_ => PollProgress(), null, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100));
         await RefreshAsync().ConfigureAwait(false);
     }
 
@@ -101,7 +101,7 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
         SessionChanged?.Invoke(this, picked);
         if (picked is not null)
         {
-            ProgressChanged?.Invoke(this, new PlaybackProgress(picked.Position, picked.Duration, picked.IsPlaying));
+            ProgressChanged?.Invoke(this, ToProgress(picked));
         }
     }
 
@@ -115,12 +115,7 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
 
         try
         {
-            var timeline = session.GetTimelineProperties();
-            var playback = session.GetPlaybackInfo();
-            TimeSpan? duration = timeline.EndTime > TimeSpan.Zero ? timeline.EndTime : null;
-            var status = playback.PlaybackStatus;
-            var isPlaying = status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-            ProgressChanged?.Invoke(this, new PlaybackProgress(timeline.Position, duration, isPlaying));
+            ProgressChanged?.Invoke(this, ReadProgress(session));
         }
         catch
         {
@@ -223,9 +218,45 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
             return null;
         }
 
+        var progress = ReadProgress(session, kind);
+        return new NowPlayingSession(
+            SourceAppId: sourceId,
+            Title: props.Title,
+            Artist: props.Artist,
+            Album: string.IsNullOrWhiteSpace(props.AlbumTitle) ? null : props.AlbumTitle,
+            Duration: progress.Duration,
+            Position: progress.Position,
+            IsPlaying: progress.IsPlaying,
+            PlayerKind: kind,
+            PlaybackRate: progress.PlaybackRate,
+            TimelineLastUpdated: progress.LastUpdated);
+    }
+
+    private static PlaybackProgress ReadProgress(GlobalSystemMediaTransportControlsSession session)
+    {
+        PlayerKind kind;
+        try
+        {
+            kind = SourceAppClassifier.Classify(session.SourceAppUserModelId);
+        }
+        catch
+        {
+            kind = PlayerKind.Unknown;
+        }
+
+        return ReadProgress(session, kind);
+    }
+
+    private static PlaybackProgress ReadProgress(
+        GlobalSystemMediaTransportControlsSession session,
+        PlayerKind kind)
+    {
+        TimeSpan position = TimeSpan.Zero;
         TimeSpan? duration = null;
-        var position = TimeSpan.Zero;
         var isPlaying = false;
+        var rate = 1.0;
+        DateTimeOffset? lastUpdated = null;
+
         try
         {
             var timeline = session.GetTimelineProperties();
@@ -239,31 +270,71 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
                 position = timeline.Position;
             }
 
+            lastUpdated = ToTimestamp(timeline.LastUpdatedTime);
+        }
+        catch
+        {
+            // Apple Music Store App sometimes has no timeline; keep metadata + playing flag.
+        }
+
+        try
+        {
             var playback = session.GetPlaybackInfo();
-            var status = playback.PlaybackStatus;
-            isPlaying = status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-            if (kind == PlayerKind.AppleMusic &&
-                !string.IsNullOrWhiteSpace(props.Title) &&
-                status is not GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed
-                    and not GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped)
+            isPlaying = IsEffectivelyPlaying(kind, playback.PlaybackStatus);
+            if (playback.PlaybackRate > 0)
             {
-                // Apple Music often reports Paused while audio is actually playing.
-                isPlaying = true;
+                rate = playback.PlaybackRate;
             }
         }
         catch
         {
-            // Keep metadata even if playback/timeline fails.
+            if (kind == PlayerKind.AppleMusic)
+            {
+                isPlaying = true;
+            }
         }
 
-        return new NowPlayingSession(
-            SourceAppId: sourceId,
-            Title: props.Title,
-            Artist: props.Artist,
-            Album: string.IsNullOrWhiteSpace(props.AlbumTitle) ? null : props.AlbumTitle,
-            Duration: duration,
-            Position: position,
-            IsPlaying: isPlaying,
-            PlayerKind: kind);
+        return new PlaybackProgress(position, duration, isPlaying, rate, lastUpdated);
+    }
+
+    private static PlaybackProgress ToProgress(NowPlayingSession session) =>
+        new(session.Position, session.Duration, session.IsPlaying, session.PlaybackRate, session.TimelineLastUpdated);
+
+    internal static bool IsEffectivelyPlaying(
+        PlayerKind kind,
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus status)
+    {
+        if (status is GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed
+            or GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped)
+        {
+            return false;
+        }
+
+        if (kind == PlayerKind.AppleMusic)
+        {
+            // Apple Music often reports Paused while audio is actually playing.
+            return true;
+        }
+
+        return status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+    }
+
+    private static DateTimeOffset? ToTimestamp(DateTime value)
+    {
+        if (value == default || value.Year < 2000)
+        {
+            return null;
+        }
+
+        try
+        {
+            return value.Kind == DateTimeKind.Unspecified
+                ? new DateTimeOffset(value, TimeZoneInfo.Local.GetUtcOffset(value))
+                : new DateTimeOffset(value);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

@@ -33,6 +33,17 @@
 
             <CheckBox Content="暫停偵測" IsChecked="{x:Bind ViewModel.DetectionPaused, Mode=TwoWay}"/>
 
+            <TextBlock Text="歌詞同步" Margin="0,12,0,0" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Opacity="0.8" TextWrapping="Wrap"
+                       Text="SMTC 進度比實際聲音慢時，用正值讓歌詞往前。可設 -10～+10 秒，預設 0。不會自動猜測偏移。"/>
+            <NumberBox Header="同步偏移（秒）"
+                       Value="{x:Bind ViewModel.SyncOffsetSeconds, Mode=TwoWay}"
+                       Minimum="-10"
+                       Maximum="10"
+                       SmallChange="0.1"
+                       LargeChange="0.5"
+                       SpinButtonPlacementMode="Inline"/>
+
             <Button Content="儲存" Command="{x:Bind ViewModel.SaveCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
             <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}" Opacity="0.85" TextWrapping="Wrap"/>
 

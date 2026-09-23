@@ -20,6 +20,25 @@ public sealed class AppSettings
     /// <summary>Always-on-top karaoke overlay. Missing JSON (old settings) is treated as on.</summary>
     public bool OverlayEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Added to interpolated SMTC position before LRC lookup. Positive = lyrics ahead
+    /// (use when SMTC lags the audio). Default 0; no automatic offset.
+    /// </summary>
+    public double SyncOffsetSeconds { get; set; }
+
+    public const double MinSyncOffsetSeconds = -10;
+    public const double MaxSyncOffsetSeconds = 10;
+
+    public static double ClampSyncOffset(double seconds)
+    {
+        if (double.IsNaN(seconds) || double.IsInfinity(seconds))
+        {
+            return 0;
+        }
+
+        return Math.Clamp(seconds, MinSyncOffsetSeconds, MaxSyncOffsetSeconds);
+    }
+
     [JsonIgnore]
     public string? ApiKey { get; set; }
 
