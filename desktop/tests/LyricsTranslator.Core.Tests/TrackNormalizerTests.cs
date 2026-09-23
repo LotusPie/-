@@ -85,4 +85,34 @@ public class TrackNormalizerTests
         Assert.Equal("夜に駆ける", query.DisplayTitle);
         Assert.Equal("yoasobi", query.NormalizedArtist);
     }
+
+    [Fact]
+    public void Canonicalizes_yorushika_and_keeps_apple_music_english_title()
+    {
+        var fromEnglish = TrackNormalizer.FromRaw(
+            "Sunny",
+            "Yorushika",
+            "second person",
+            TimeSpan.FromSeconds(268),
+            "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App",
+            PlayerKind.AppleMusic,
+            true);
+        var fromJapanese = TrackNormalizer.FromRaw(
+            "晴る",
+            "ヨルシカ",
+            "second person",
+            TimeSpan.FromSeconds(268),
+            "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App",
+            PlayerKind.AppleMusic,
+            true);
+
+        Assert.Equal("Sunny", fromEnglish.DisplayTitle);
+        Assert.Equal("Yorushika", fromEnglish.DisplayArtist);
+        Assert.Equal("yorushika", fromEnglish.NormalizedArtist);
+        Assert.Equal("yorushika", fromJapanese.NormalizedArtist);
+        Assert.Equal("sunny", fromEnglish.NormalizedTitle);
+        Assert.Contains("晴る", TitleAliases.Variants("Sunny"));
+        Assert.Contains("ヨルシカ", ArtistAliases.Variants("Yorushika"));
+        Assert.Contains("Sunny", TitleAliases.Variants("晴る"));
+    }
 }

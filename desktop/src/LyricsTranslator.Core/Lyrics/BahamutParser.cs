@@ -35,24 +35,67 @@ public static partial class BahamutParser
         return true;
     }
 
+    public const int MaxSearchQueries = 16;
+
+    private static readonly string[] LyricQuerySuffixes =
+    [
+        "歌詞",
+        "歌詞翻譯",
+        "中日歌詞",
+        "中文歌詞",
+        "中文翻譯",
+    ];
+
     public static IReadOnlyList<string> BuildSearchQueries(TrackQuery query)
     {
         var title = query.DisplayTitle.Trim();
         var artist = query.DisplayArtist.Trim();
+        var titles = TitleAliases.Variants(title);
+        var artists = ArtistAliases.Variants(artist);
         var queries = new List<string>();
-        Add(queries, title);
-        if (artist.Length > 0)
+
+        // Person-like SMTC / Apple Music strings first: "Sunny 歌詞", "Sunny Yorushika 歌詞翻譯".
+        TryAdd(queries, title);
+        foreach (var suffix in LyricQuerySuffixes)
         {
-            Add(queries, $"{title} {artist}");
+            TryAdd(queries, $"{title} {suffix}");
         }
 
-        Add(queries, $"{title} 歌詞");
-        Add(queries, $"{title} 歌詞翻譯");
-        Add(queries, $"{title} 中文歌詞");
         if (artist.Length > 0)
         {
-            Add(queries, $"{title} {artist} 歌詞");
-            Add(queries, $"{title} {artist} 歌詞翻譯");
+            TryAdd(queries, $"{title} {artist}");
+            TryAdd(queries, $"{title} {artist} 歌詞");
+            TryAdd(queries, $"{title} {artist} 歌詞翻譯");
+        }
+
+        foreach (var aliasTitle in titles)
+        {
+            if (string.Equals(aliasTitle, title, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            TryAdd(queries, aliasTitle);
+            TryAdd(queries, $"{aliasTitle} 歌詞");
+            TryAdd(queries, $"{aliasTitle} 歌詞翻譯");
+            TryAdd(queries, $"{aliasTitle} 中日歌詞");
+            if (artist.Length > 0)
+            {
+                TryAdd(queries, $"{aliasTitle} {artist}");
+            }
+        }
+
+        foreach (var aliasArtist in artists)
+        {
+            if (artist.Length == 0 ||
+                string.Equals(aliasArtist, artist, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            TryAdd(queries, $"{title} {aliasArtist}");
+            TryAdd(queries, $"{title} {aliasArtist} 歌詞");
+            TryAdd(queries, $"{title} {aliasArtist} 歌詞翻譯");
         }
 
         return queries;
@@ -106,18 +149,27 @@ public static partial class BahamutParser
         }
 
         var compactHit = CompactForMatch(title);
-        var compactTitle = CompactForMatch(query.DisplayTitle);
-        if (compactTitle.Length < 2 || !compactHit.Contains(compactTitle, StringComparison.Ordinal))
+        var titleVariants = TitleAliases.Variants(query.DisplayTitle)
+            .Select(CompactForMatch)
+            .Where(static compact => compact.Length >= 2)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (titleVariants.Count == 0 || !titleVariants.Any(compact => compactHit.Contains(compact, StringComparison.Ordinal)))
         {
             return 0;
         }
 
+        var compactTitle = CompactForMatch(query.DisplayTitle);
         var compactArtist = CompactForMatch(query.DisplayArtist);
-        var artistMatched = compactArtist.Length >= 2 &&
-                            compactHit.Contains(compactArtist, StringComparison.Ordinal);
+        var artistMatched = ArtistAliases.Variants(query.DisplayArtist)
+            .Select(CompactForMatch)
+            .Any(compact => compact.Length >= 2 && compactHit.Contains(compact, StringComparison.Ordinal));
 
-        // Short Latin titles ("Hello", "Stay") match too many unrelated posts unless the artist is there.
-        if (IsShortLatin(compactTitle) && compactArtist.Length >= 2 && !artistMatched)
+        // Short Latin titles ("Hello", "Stay") match too many unrelated posts unless the artist
+        // (or a native title alias such as 晴る for Sunny) is in the post title.
+        var nativeTitleInHit = titleVariants.Any(compact =>
+            !IsShortLatin(compact) && compactHit.Contains(compact, StringComparison.Ordinal));
+        if (IsShortLatin(compactTitle) && compactArtist.Length >= 2 && !artistMatched && !nativeTitleInHit)
         {
             return 0;
         }
@@ -222,6 +274,16 @@ public static partial class BahamutParser
     public static LyricsSource SourceFromSite(string siteLabel) =>
         string.Equals(siteLabel, "巴哈姆特", StringComparison.Ordinal) ? LyricsSource.Bahamut : LyricsSource.Web;
 
+    private static void TryAdd(List<string> queries, string value)
+    {
+        if (queries.Count >= MaxSearchQueries)
+        {
+            return;
+        }
+
+        Add(queries, value);
+    }
+
     private static void Add(List<string> queries, string value)
     {
         var trimmed = value.Trim();
@@ -295,6 +357,17 @@ public static partial class BahamutParser
             line = tagged.Groups[1].Value;
         }
 
+        var parts = InterleavedSplitRegex()
+            .Split(line)
+            .Select(static part => ExtractChineseSegment(part))
+            .Where(static part => !string.IsNullOrWhiteSpace(part))
+            .ToList();
+
+        return parts.Count == 0 ? null : string.Join(" ", parts!);
+    }
+
+    private static string? ExtractChineseSegment(string line)
+    {
         var paren = line.IndexOf('（');
         if (paren > 0)
         {
@@ -320,8 +393,11 @@ public static partial class BahamutParser
         line.StartsWith("作曲", StringComparison.Ordinal) ||
         line.StartsWith("編曲", StringComparison.Ordinal) ||
         line.StartsWith("中文翻譯", StringComparison.Ordinal) ||
+        line.StartsWith("歌詞翻譯", StringComparison.Ordinal) ||
         line.StartsWith("翻譯：", StringComparison.Ordinal) ||
         line.StartsWith("歌：", StringComparison.Ordinal) ||
+        line.Contains("翻譯錯誤", StringComparison.Ordinal) ||
+        line.Contains("請見諒", StringComparison.Ordinal) ||
         line.Contains("轉載", StringComparison.Ordinal) ||
         line.Contains("繼續閱讀", StringComparison.Ordinal) ||
         line.Contains("作者相關", StringComparison.Ordinal);
@@ -369,6 +445,11 @@ public static partial class BahamutParser
 
     [GeneratedRegex(@"<br\s*/?>|</p>|</div>|</li>|<li[^>]*>|</h[1-6]>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BrRegex();
+
+    // Same-line JP/ZH pairs: "貴方は風のように / 你就像微風一般" or fullwidth ／.
+    // Require spaces around ASCII / so titles like 中日歌詞/中文翻譯 stay intact.
+    [GeneratedRegex(@"\s*／\s*|\s+/\s+", RegexOptions.CultureInvariant)]
+    private static partial Regex InterleavedSplitRegex();
 
     [GeneratedRegex(@"<[^>]+>")]
     private static partial Regex TagRegex();

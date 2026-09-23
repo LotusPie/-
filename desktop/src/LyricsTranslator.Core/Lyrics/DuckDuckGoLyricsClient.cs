@@ -47,12 +47,10 @@ public sealed partial class DuckDuckGoLyricsClient : IWebLyricsClient
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
 
-        var keywords = new[]
-        {
-            $"{query.DisplayTitle} {query.DisplayArtist} 歌詞翻譯".Trim(),
-            $"{query.DisplayTitle} 歌詞翻譯",
-            $"{query.DisplayTitle} 中文歌詞",
-        }.Distinct(StringComparer.Ordinal).ToList();
+        var keywords = BahamutParser.BuildSearchQueries(query)
+            .Where(static q => q.Contains("歌詞", StringComparison.Ordinal) || q.Contains("翻譯", StringComparison.Ordinal))
+            .Take(8)
+            .ToList();
 
         var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var keyword in keywords)

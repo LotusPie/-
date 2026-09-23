@@ -85,7 +85,7 @@ Visual Studio：開啟 `desktop\LyricsTranslator.sln`，將 `LyricsTranslator.Ap
 | 步驟 | 行為 |
 | --- | --- |
 | 1 | 本機 SQLite **社群**快取（巴哈／網頁譯詞）。舊的 **AI 快取不是終點**：下一首播放會再查巴哈／網頁，命中就換掉 AI |
-| 2 | [巴哈姆特創作大廳](https://home.gamer.com.tw/)：用歌名／歌手／「歌詞」「歌詞翻譯」「中文歌詞」搜，**不限日文假名**。命中標「巴哈姆特」，**不呼叫 AI** |
+| 2 | [巴哈姆特創作大廳](https://home.gamer.com.tw/)：用人會打的關鍵字搜（`Sunny 歌詞`、`晴る 歌詞`、`Sunny Yorushika 歌詞翻譯`、`Sunny 中日歌詞`），含羅馬拼音與日文別名（Sunny↔晴る、Yorushika↔ヨルシカ）。**不限日文假名**。命中標「巴哈姆特」，**不呼叫 AI** |
 | 3 | 巴哈沒找到時，用網頁搜尋（title + 歌詞翻譯）只跟公開歌詞頁（巴哈、Mojim），標站名 |
 | 4 | [LRCLIB](https://lrclib.net/docs) 只取**原文**與 **synced LRC**（不是繁中譯詞） |
 | 5 | 若原文已是繁中，直接顯示，不呼叫 AI |

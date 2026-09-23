@@ -40,6 +40,23 @@ public class DuckDuckGoLyricsClientTests
     }
 
     [Fact]
+    public void Rank_matches_english_apple_title_to_zhongri_bahamut_post()
+    {
+        var query = BahamutParserTests.AppleSunny();
+        var hits = new[]
+        {
+            new DuckDuckGoLyricsClient.WebHit("日本遊記 Sunny", new Uri("https://home.gamer.com.tw/artwork.php?sn=1")),
+            new DuckDuckGoLyricsClient.WebHit(
+                "【中日歌詞/中文翻譯】晴る (Sunny)【ヨルシカ/葬送のフリーレン】",
+                new Uri(BahamutFixture.SunnyArtworkUrl)),
+        };
+
+        var ranked = DuckDuckGoLyricsClient.Rank(hits, query).ToList();
+        Assert.Single(ranked);
+        Assert.Equal(BahamutFixture.SunnyArtworkUrl, ranked[0].Url.AbsoluteUri);
+    }
+
+    [Fact]
     public async Task Fetches_translation_from_allowlisted_page()
     {
         var search =

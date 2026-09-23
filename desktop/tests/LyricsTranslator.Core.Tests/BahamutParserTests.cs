@@ -20,17 +20,28 @@ public class BahamutParserTests
     public void Build_search_queries_cover_how_a_person_would_google()
     {
         var queries = BahamutParser.BuildSearchQueries(Song("夜に駆ける", "YOASOBI"));
-        Assert.Equal(
-            [
-                "夜に駆ける",
-                "夜に駆ける YOASOBI",
-                "夜に駆ける 歌詞",
-                "夜に駆ける 歌詞翻譯",
-                "夜に駆ける 中文歌詞",
-                "夜に駆ける YOASOBI 歌詞",
-                "夜に駆ける YOASOBI 歌詞翻譯",
-            ],
-            queries);
+        Assert.Contains("夜に駆ける", queries);
+        Assert.Contains("夜に駆ける YOASOBI", queries);
+        Assert.Contains("夜に駆ける 歌詞", queries);
+        Assert.Contains("夜に駆ける 歌詞翻譯", queries);
+        Assert.Contains("夜に駆ける 中文歌詞", queries);
+        Assert.Contains("夜に駆ける 中日歌詞", queries);
+        Assert.Contains("夜に駆ける YOASOBI 歌詞", queries);
+        Assert.Contains("夜に駆ける YOASOBI 歌詞翻譯", queries);
+        Assert.True(queries.Count <= BahamutParser.MaxSearchQueries);
+    }
+
+    [Fact]
+    public void Build_search_queries_for_english_apple_title_include_native_aliases()
+    {
+        var queries = BahamutParser.BuildSearchQueries(AppleSunny());
+        Assert.Contains("Sunny 歌詞", queries);
+        Assert.Contains("晴る 歌詞", queries);
+        Assert.Contains("Sunny Yorushika 歌詞翻譯", queries);
+        Assert.Contains("Sunny 中日歌詞", queries);
+        Assert.Contains("Sunny", queries);
+        Assert.True(queries.Count <= BahamutParser.MaxSearchQueries);
+        Assert.Contains(queries, q => q.Contains("ヨルシカ", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -147,6 +158,78 @@ public class BahamutParserTests
         Assert.Null(lyrics);
     }
 
+    [Fact]
+    public void Extracts_traditional_chinese_from_same_line_jp_zh_pairs()
+    {
+        const string text =
+            """
+            貴方は風のように / 你就像微風一般
+            目を閉じては夕暮れ／闔上雙眼染上暮色
+            何を思っているんだろうか / 究竟你內心在想甚麼呢
+            目蓋を開いていた／你睜開的眼臉底下
+            """;
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(text);
+        Assert.Equal("你就像微風一般\n闔上雙眼染上暮色\n究竟你內心在想甚麼呢\n你睜開的眼臉底下", lyrics);
+        Assert.DoesNotContain("貴方", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("目を", lyrics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Scores_sunny_yorushika_against_haru_zhongri_post()
+    {
+        var query = AppleSunny();
+        var hit = new BahamutSearchHit(
+            BahamutFixture.SunnySn,
+            "【中日歌詞/中文翻譯】晴る(Sunny) 【ヨルシカ/葬送のフリーレン】",
+            BahamutFixture.SunnyArtworkUrl);
+        Assert.True(BahamutParser.ScoreHit(hit, query) > 100);
+
+        var nativeOnly = new BahamutSearchHit(
+            "2",
+            "【中日歌詞】晴る",
+            "https://home.gamer.com.tw/artwork.php?sn=2");
+        Assert.True(BahamutParser.ScoreHit(nativeOnly, query) > 100);
+    }
+
+    [Fact]
+    public void Fixture_html_extracts_interleaved_jp_then_zh_without_kana()
+    {
+        var html = BahamutFixture.ReadSunnyArtwork();
+        var hits = BahamutParser.ParseSearchHits(html);
+        Assert.Contains(hits, h => h.Sn == BahamutFixture.SunnySn);
+        Assert.True(BahamutParser.ScoreHit(hits.First(h => h.Sn == BahamutFixture.SunnySn), AppleSunny()) > 100);
+
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(BahamutParser.ExtractArticleText(html));
+        Assert.NotNull(lyrics);
+        Assert.Contains("你就像微風一般", lyrics);
+        Assert.Contains("闔上雙眼染上暮色", lyrics);
+        Assert.DoesNotContain("貴方は", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("目を閉じて", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("歌詞翻譯", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("作詞", lyrics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Live_or_fixture_sn_5859521_extracts_traditional_chinese()
+    {
+        var html = await BahamutFixture.LoadSunnyArtworkAsync();
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(BahamutParser.ExtractArticleText(html));
+        Assert.NotNull(lyrics);
+        Assert.Contains("你就像微風一般", lyrics);
+        Assert.Contains("闔上雙眼染上暮色", lyrics);
+        Assert.DoesNotContain("貴方は風のように", lyrics, StringComparison.Ordinal);
+    }
+
     private static TrackQuery Song(string title, string artist) =>
         TrackNormalizer.FromRaw(title, artist, null, TimeSpan.FromSeconds(260), "Chrome", PlayerKind.Browser, true);
+
+    internal static TrackQuery AppleSunny() =>
+        TrackNormalizer.FromRaw(
+            "Sunny",
+            "Yorushika",
+            "second person",
+            TimeSpan.FromSeconds(268),
+            "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App",
+            PlayerKind.AppleMusic,
+            true);
 }

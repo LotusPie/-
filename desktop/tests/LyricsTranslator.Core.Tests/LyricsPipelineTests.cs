@@ -267,6 +267,36 @@ public class LyricsPipelineTests
     }
 
     [Fact]
+    public async Task Apple_music_english_title_uses_bahamut_and_skips_gemini()
+    {
+        var translator = new RecordingTranslator { Translation = "不該出現" };
+        var bahamut = new RecordingBahamut(new CommunityTranslation(
+            "你就像微風一般\n闔上雙眼染上暮色\n究竟你內心在想甚麼呢\n你睜開的眼臉底下",
+            "【中日歌詞/中文翻譯】晴る (Sunny)【ヨルシカ/葬送のフリーレン】",
+            BahamutFixture.SunnyArtworkUrl));
+        var pipeline = Create(
+            new StubLrclib(new LrclibTrack
+            {
+                TrackName = "Sunny",
+                ArtistName = "Yorushika",
+                PlainLyrics = "貴方は風のように\n目を閉じては夕暮れ",
+                SyncedLyrics = "[00:12.00] 貴方は風のように",
+            }),
+            translator,
+            apiKey: "sk-test",
+            bahamut);
+
+        var result = await pipeline.ResolveAsync(BahamutParserTests.AppleSunny(), CancellationToken.None);
+
+        Assert.True(bahamut.WasCalled);
+        Assert.False(translator.WasCalled);
+        Assert.Equal(LyricsSource.Bahamut, result.TranslationSource);
+        Assert.Equal("社群／LRCLIB → 巴哈姆特", result.SourceLabel);
+        Assert.Contains("你就像微風一般", result.Translation);
+        Assert.Contains("闔上雙眼染上暮色", result.Translation);
+    }
+
+    [Fact]
     public async Task Paste_then_translate_is_labeled_hand_paste()
     {
         var translator = new RecordingTranslator { Translation = "手貼譯文" };
