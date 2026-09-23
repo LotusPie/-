@@ -103,4 +103,19 @@ public class LyricTrackTests
         Assert.DoesNotContain(lines, l => l.Translation.Contains("article_content", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(lines, l => l.Translation.Contains("b23.tv", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void Drops_translator_preface_from_overlay_translation_lines()
+    {
+        var lines = LyricTrack.Build(
+            "a\nb\nc\nd",
+            "只是經常聽到他們的歌，充其量也只能算路人粉？\n還請多多包涵囉。\n啊啊 無可救藥地 在我心底蠢蠢欲動的野獸\n接連浮上水面又無疾而終的\n氣泡\n同義反覆 握緊的手裡留下氣泡\n最後也會附上我對這首歌的小小理解～",
+            syncedLrc: null);
+
+        Assert.Equal(4, lines.Count);
+        Assert.Equal("啊啊 無可救藥地 在我心底蠢蠢欲動的野獸", lines[0].Translation);
+        Assert.DoesNotContain(lines, l => l.Translation.Contains("路人粉", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, l => l.Translation.Contains("包涵", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, l => l.Translation.Contains("小小理解", StringComparison.Ordinal));
+    }
 }

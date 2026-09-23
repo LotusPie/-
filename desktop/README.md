@@ -85,7 +85,7 @@ Visual Studio：開啟 `desktop\LyricsTranslator.sln`，將 `LyricsTranslator.Ap
 | 步驟 | 行為 |
 | --- | --- |
 | 1 | 本機 SQLite **社群**快取（巴哈／網頁譯詞）。舊的 **AI 快取不是終點**：下一首播放會再查巴哈／網頁，命中就換掉 AI |
-| 2 | [巴哈姆特創作大廳](https://home.gamer.com.tw/)：用**畫面上的原文脚本**搜（花一匁／晴る／青い栞，不是 Hanaichi Monnme／Aoi Shiori 優先）。巴哈搜尋若用羅馬拼音找到「日+羅+中／中日歌詞」貼文，即使標題是日文也要收下。**有社群繁中就不呼叫 AI**。LRCLIB 有日文原文時仍繼續爬巴哈。 |
+| 2 | [巴哈姆特創作大廳](https://home.gamer.com.tw/)：用**畫面上的原文脚本**搜（花一匁／晴る／青い栞，不是 Hanaichi Monnme／Aoi Shiori 優先）。巴哈搜尋若用羅馬拼音找到「日+羅+中／中日歌詞」貼文，即使標題是日文也要收下。**只留中日對照歌詞行**，去掉譯者前言／註釋／小小理解／上一篇。**有社群繁中就不呼叫 AI**。LRCLIB 有日文原文時仍繼續爬巴哈。 |
 | 3 | 巴哈沒找到時，用網頁搜尋（title + 歌詞翻譯）只跟公開歌詞頁（巴哈、Mojim），標站名 |
 | 4 | [LRCLIB](https://lrclib.net/docs) 用**日文歌名／歌手**查原文 + synced LRC（`/api/get` 帶時長，失敗再 `search?q=`）。選標題對得上日文原題、時長接近、且有 LRC 的那一筆。不發明時間軸 |
 | 5 | 若原文已是繁中，直接顯示，不呼叫 AI |

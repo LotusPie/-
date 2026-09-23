@@ -347,6 +347,90 @@ public class BahamutParserTests
         Assert.DoesNotContain("tsuiyashite", lyrics, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Drops_translator_preface_footnotes_and_keeps_abuku_lyric_lines()
+    {
+        const string text =
+            """
+            這首歌是ヨルシカ為動畫寫的OP
+            只是經常聽到他們的歌，充其量也只能算路人粉？總之，我邊翻也有邊找一些資料，
+            但可能還是有瞭解不夠而翻譯不到位的地方，還請多多包涵囉。
+            由於這首歌有很多隱喻和抽象的手法，
+            部分需要配合原文深入解釋的地方，我會標橘字並在後面放上詳細註釋。
+            最後也會附上我對這首歌的小小理解～
+            あぁどうしようもないほどに 私に蠢く獣
+            水面浮かんで浮かんでは消える
+            あぶく
+            啊啊 無可救藥地 在我心底蠢蠢欲動的野獸
+            接連浮上水面又無疾而終的
+            氣泡
+            あぁどうしようもなく悲しい 私を動かす獣
+            同義反覆 握緊的手裡留下氣泡¹
+            【註釋】
+            1.同義反覆 握緊的手裡留下氣泡：トートロジー，又稱套套邏輯。這是整首歌的核心概念。
+            回到歌詞，我覺得這裡不是空虛。
+            【個人感想】
+            暫且不談這首歌在作品當中的寓意，我覺得這是一首側寫出創作者心境的歌。
+            """;
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(text);
+        Assert.NotNull(lyrics);
+        Assert.Contains("啊啊 無可救藥地 在我心底蠢蠢欲動的野獸", lyrics);
+        Assert.Contains("接連浮上水面又無疾而終的", lyrics);
+        Assert.Contains("氣泡", lyrics);
+        Assert.Contains("同義反覆 握緊的手裡留下氣泡", lyrics);
+        Assert.DoesNotContain("¹", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("路人粉", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("包涵", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("小小理解", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("標橘字", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("註釋", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("套套邏輯", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("我翻", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("我對這首歌", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("暫且不談", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("隱喻", lyrics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Fixture_html_extracts_abuku_lyrics_without_translator_commentary()
+    {
+        var html = BahamutFixture.ReadAbukuArtwork();
+        var text = BahamutParser.ExtractArticleText(html);
+        Assert.DoesNotContain("套套邏輯", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("上一篇", text, StringComparison.Ordinal);
+
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(text);
+        Assert.NotNull(lyrics);
+        Assert.Contains("啊啊 無可救藥地 在我心底蠢蠢欲動的野獸", lyrics);
+        Assert.Contains("同義反覆 握緊的手裡留下氣泡", lyrics);
+        Assert.DoesNotContain("路人粉", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("包涵", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("小小理解", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("標橘字", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("套套邏輯", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("暫且不談", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("¹", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("あぁ", lyrics, StringComparison.Ordinal);
+        Assert.True(BahamutParser.IsChromeOrNote("只是經常聽到他們的歌，充其量也只能算路人粉？"));
+        Assert.True(BahamutParser.IsChromeOrNote("最後也會附上我對這首歌的小小理解～"));
+    }
+
+    [Fact]
+    public async Task Live_or_fixture_sn_6324990_extracts_lyrics_without_preface()
+    {
+        var html = await BahamutFixture.LoadAbukuArtworkAsync();
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(BahamutParser.ExtractArticleText(html));
+        Assert.NotNull(lyrics);
+        Assert.Contains("無可救藥", lyrics, StringComparison.Ordinal);
+        Assert.Contains("氣泡", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("路人粉", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("包涵", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("小小理解", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("標橘字", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("套套邏輯", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("暫且不談", lyrics, StringComparison.Ordinal);
+    }
+
     private static TrackQuery Song(string title, string artist) =>
         TrackNormalizer.FromRaw(title, artist, null, TimeSpan.FromSeconds(260), "Chrome", PlayerKind.Browser, true);
 

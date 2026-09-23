@@ -241,16 +241,42 @@ public static partial class BahamutParser
             .Where(static l => l.Length > 0)
             .ToList();
 
+        var separator = lines.FindIndex(IsLyricSeparator);
+        if (separator >= 0)
+        {
+            lines = lines.Skip(separator + 1).ToList();
+        }
+
+        var hasOriginalBlock = lines.Any(IsOriginalLyricLine);
+        var seenOriginal = !hasOriginalBlock;
         var chinese = new List<string>();
         foreach (var line in lines)
         {
+            if (IsLyricSectionEnd(line))
+            {
+                break;
+            }
+
             if (IsChromeOrNote(line))
             {
                 continue;
             }
 
+            if (IsOriginalLyricLine(line))
+            {
+                seenOriginal = true;
+            }
+
             var extracted = ExtractChineseFromLine(line);
-            if (string.IsNullOrWhiteSpace(extracted) || IsChromeOrNote(extracted))
+            extracted = StripFootnoteMarks(extracted);
+            if (string.IsNullOrWhiteSpace(extracted) ||
+                IsChromeOrNote(extracted) ||
+                IsProseCommentary(extracted))
+            {
+                continue;
+            }
+
+            if (!seenOriginal)
             {
                 continue;
             }
@@ -324,12 +350,13 @@ public static partial class BahamutParser
             text.Contains("翻譯來源", StringComparison.Ordinal) ||
             text.Contains("不是我翻譯", StringComparison.Ordinal) ||
             text.Contains("只是把中日", StringComparison.Ordinal) ||
-            text.Contains("整理起來", StringComparison.Ordinal))
+            text.Contains("整理起來", StringComparison.Ordinal) ||
+            text is "＝＝＝" or "=====" or "-----")
         {
             return true;
         }
 
-        return IsMetaLine(text);
+        return IsTranslatorCommentary(text) || IsMetaLine(text);
     }
 
     private static readonly string[] NativeTitleJunk =
@@ -350,6 +377,10 @@ public static partial class BahamutParser
         "id=\"replys\"",
         "上一篇",
         "下一篇",
+        "【註釋】",
+        "【個人感想】",
+        "【註解】",
+        "【翻譯筆記】",
     ];
 
     private static string SliceArticle(string html)
@@ -486,6 +517,97 @@ public static partial class BahamutParser
         return line;
     }
 
+    private static bool IsOriginalLyricLine(string line)
+    {
+        if (IsLyricSectionEnd(line) || IsTranslatorCommentary(line) || IsChromeOrNote(line))
+        {
+            return false;
+        }
+
+        if (LanguageDetector.LooksLikeKorean(line))
+        {
+            return !LooksLikeMostlyChineseProse(line);
+        }
+
+        return LanguageDetector.LooksLikeJapanese(line) && !LooksLikeMostlyChineseProse(line);
+    }
+
+    private static bool LooksLikeMostlyChineseProse(string line) =>
+        LanguageDetector.CountChineseFunctionWords(line) >= 3 ||
+        line.Contains("這首歌", StringComparison.Ordinal) ||
+        line.Contains("這部作品", StringComparison.Ordinal);
+
+    private static bool IsLyricSeparator(string line)
+    {
+        var compact = line.Replace(" ", "", StringComparison.Ordinal);
+        return compact is "＝＝＝" or "===" or "=====" or "-----" or "———" ||
+               compact.Contains("【歌詞】", StringComparison.Ordinal);
+    }
+
+    private static bool IsLyricSectionEnd(string line)
+    {
+        if (line.Contains("【註釋】", StringComparison.Ordinal) ||
+            line.Contains("【個人感想】", StringComparison.Ordinal) ||
+            line.Contains("【註解】", StringComparison.Ordinal) ||
+            line.Contains("【翻譯筆記】", StringComparison.Ordinal) ||
+            line.Contains("【心得】", StringComparison.Ordinal) ||
+            line.Contains("上一篇", StringComparison.Ordinal) ||
+            line.Contains("下一篇", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (line is "註釋" or "個人感想" or "小小理解" or "翻譯筆記")
+        {
+            return true;
+        }
+
+        return NumberedFootnoteRegex().IsMatch(line) &&
+               (line.Length > 24 || line.Contains('：') || line.Contains(':'));
+    }
+
+    private static bool IsTranslatorCommentary(string line)
+    {
+        return line.Contains("路人粉", StringComparison.Ordinal) ||
+               line.Contains("包涵", StringComparison.Ordinal) ||
+               line.Contains("小小理解", StringComparison.Ordinal) ||
+               line.Contains("標橘字", StringComparison.Ordinal) ||
+               line.Contains("橘字", StringComparison.Ordinal) ||
+               line.Contains("詳細註釋", StringComparison.Ordinal) ||
+               line.Contains("註釋", StringComparison.Ordinal) ||
+               line.Contains("翻譯不到位", StringComparison.Ordinal) ||
+               line.Contains("我對這首歌", StringComparison.Ordinal) ||
+               line.Contains("我邊翻", StringComparison.Ordinal) ||
+               line.Contains("我會標", StringComparison.Ordinal) ||
+               line.Contains("我翻", StringComparison.Ordinal) ||
+               line.Contains("順手翻了", StringComparison.Ordinal) ||
+               line.Contains("老實說我", StringComparison.Ordinal) ||
+               line.Contains("留言補充", StringComparison.Ordinal) ||
+               line.Contains("個人感想", StringComparison.Ordinal) ||
+               line.Contains("回到歌詞", StringComparison.Ordinal) ||
+               line.Contains("充其量", StringComparison.Ordinal) ||
+               line.Contains("還請多多", StringComparison.Ordinal) ||
+               line.Contains("暫且不談", StringComparison.Ordinal);
+    }
+
+    private static bool IsProseCommentary(string line) =>
+        line.Length >= 56 &&
+        (line.Contains("我覺得", StringComparison.Ordinal) ||
+         line.Contains("所以這裡", StringComparison.Ordinal) ||
+         line.Contains("我選擇", StringComparison.Ordinal) ||
+         line.Count(static c => c is '，' or '。') >= 2);
+
+    private static string? StripFootnoteMarks(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return line;
+        }
+
+        var stripped = FootnoteMarkRegex().Replace(line, " ").Trim();
+        return WhitespaceRegex().Replace(stripped, " ").Trim();
+    }
+
     private static bool IsMetaLine(string line) =>
         line.StartsWith("作詞", StringComparison.Ordinal) ||
         line.StartsWith("作曲", StringComparison.Ordinal) ||
@@ -500,7 +622,8 @@ public static partial class BahamutParser
         line.Contains("繼續閱讀", StringComparison.Ordinal) ||
         line.Contains("作者相關", StringComparison.Ordinal) ||
         line.Contains("來源：", StringComparison.Ordinal) ||
-        line.Contains("來源:", StringComparison.Ordinal);
+        line.Contains("來源:", StringComparison.Ordinal) ||
+        line.Contains("來源", StringComparison.Ordinal);
 
     private static int IndexOfAny(string text, params string[] needles)
     {
@@ -571,4 +694,13 @@ public static partial class BahamutParser
 
     [GeneratedRegex(@"<[^>]+>")]
     private static partial Regex TagRegex();
+
+    [GeneratedRegex(@"[¹²³⁴⁵⁶⁷⁸⁹⁰₁₂₃₄₅₆₇₈₉₀\u00B9\u00B2\u00B3\u2070-\u2079]+")]
+    private static partial Regex FootnoteMarkRegex();
+
+    [GeneratedRegex(@"^\d+[\.．、]")]
+    private static partial Regex NumberedFootnoteRegex();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRegex();
 }

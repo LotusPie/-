@@ -8,12 +8,17 @@ internal static class BahamutFixture
     public const string SunnySn = "5859521";
     public const string AoiShioriArtworkUrl = "https://home.gamer.com.tw/artwork.php?sn=3854760";
     public const string AoiShioriSn = "3854760";
+    public const string AbukuArtworkUrl = "https://home.gamer.com.tw/artwork.php?sn=6324990";
+    public const string AbukuSn = "6324990";
 
     public static string PathToSunnyArtwork =>
         Path.Combine(AppContext.BaseDirectory, "Fixtures", "bahamut-5859521.html");
 
     public static string PathToAoiShioriArtwork =>
         Path.Combine(AppContext.BaseDirectory, "Fixtures", "bahamut-3854760.html");
+
+    public static string PathToAbukuArtwork =>
+        Path.Combine(AppContext.BaseDirectory, "Fixtures", "bahamut-6324990.html");
 
     public static string ReadAoiShioriArtwork() => File.ReadAllText(PathToAoiShioriArtwork);
 
@@ -64,5 +69,29 @@ internal static class BahamutFixture
         }
 
         return ReadSunnyArtwork();
+    }
+
+    public static string ReadAbukuArtwork() => File.ReadAllText(PathToAbukuArtwork);
+
+    public static async Task<string> LoadAbukuArtworkAsync()
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd(BahamutClient.UserAgent);
+            http.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-TW,zh;q=0.9");
+            var html = await http.GetStringAsync(AbukuArtworkUrl);
+            if (html.Contains("無可救藥", StringComparison.Ordinal) &&
+                html.Contains("article_content", StringComparison.OrdinalIgnoreCase))
+            {
+                return html;
+            }
+        }
+        catch (Exception)
+        {
+            // CI / offline: use the fixture checked into the repo.
+        }
+
+        return ReadAbukuArtwork();
     }
 }
