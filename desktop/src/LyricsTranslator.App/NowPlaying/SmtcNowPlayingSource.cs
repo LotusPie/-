@@ -281,9 +281,9 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
         {
             var playback = session.GetPlaybackInfo();
             isPlaying = IsEffectivelyPlaying(kind, playback.PlaybackStatus);
-            if (playback.PlaybackRate > 0)
+            if (playback.PlaybackRate is double playbackRate && playbackRate > 0)
             {
-                rate = playback.PlaybackRate;
+                rate = playbackRate;
             }
         }
         catch
@@ -319,22 +319,13 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
         return status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
     }
 
-    private static DateTimeOffset? ToTimestamp(DateTime value)
+    private static DateTimeOffset? ToTimestamp(DateTimeOffset value)
     {
         if (value == default || value.Year < 2000)
         {
             return null;
         }
 
-        try
-        {
-            return value.Kind == DateTimeKind.Unspecified
-                ? new DateTimeOffset(value, TimeZoneInfo.Local.GetUtcOffset(value))
-                : new DateTimeOffset(value);
-        }
-        catch
-        {
-            return null;
-        }
+        return value;
     }
 }
