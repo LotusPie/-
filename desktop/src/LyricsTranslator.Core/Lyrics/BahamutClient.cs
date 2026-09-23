@@ -4,7 +4,8 @@ namespace LyricsTranslator.Core.Lyrics;
 
 public sealed class BahamutClient : IBahamutClient
 {
-    public const string UserAgent = LrclibClient.UserAgent;
+    public const string UserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
     private readonly HttpClient _http;
 
@@ -30,16 +31,45 @@ public sealed class BahamutClient : IBahamutClient
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
 
+        var tried = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var keyword in BahamutParser.BuildSearchQueries(query))
+        {
+            CommunityTranslation? hit;
+            try
+            {
+                hit = await SearchOnceAsync(query, keyword, tried, timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+            catch (HttpRequestException)
+            {
+                continue;
+            }
+
+            if (hit is not null)
+            {
+                return hit;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<CommunityTranslation?> SearchOnceAsync(
+        TrackQuery query,
+        string keyword,
+        HashSet<string> tried,
+        CancellationToken cancellationToken)
+    {
         string html;
         try
         {
-            html = await _http.GetStringAsync(BahamutParser.BuildSearchUrl(query), timeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return null;
+            html = await _http.GetStringAsync(BahamutParser.BuildSearchUrl(keyword), cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (HttpRequestException)
         {
@@ -50,12 +80,16 @@ public sealed class BahamutClient : IBahamutClient
             .Select(h => (Hit: h, Score: BahamutParser.ScoreHit(h, query)))
             .Where(x => x.Score > 0)
             .OrderByDescending(x => x.Score)
-            .Take(3)
             .ToList();
 
-        foreach (var (hit, _) in ranked)
+        foreach (var (hit, _) in ranked.Take(5))
         {
-            var translation = await TryFetchAsync(hit, timeout.Token).ConfigureAwait(false);
+            if (!tried.Add(hit.Sn))
+            {
+                continue;
+            }
+
+            var translation = await TryFetchAsync(hit, cancellationToken).ConfigureAwait(false);
             if (translation is not null)
             {
                 return translation;
@@ -77,7 +111,7 @@ public sealed class BahamutClient : IBahamutClient
                 return null;
             }
 
-            return new CommunityTranslation(lyrics, hit.Title, hit.Url);
+            return new CommunityTranslation(lyrics, hit.Title, hit.Url, "巴哈姆特");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

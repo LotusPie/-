@@ -56,6 +56,102 @@ public class LyricsPipelineTests
     }
 
     [Fact]
+    public async Task English_song_uses_bahamut_before_ai()
+    {
+        var translator = new RecordingTranslator { Translation = "不該出現" };
+        var bahamut = new StubBahamut(new CommunityTranslation(
+            "你好來自另一邊\n我必須說\n我已試過\n告訴你一切",
+            "Hello Adele 歌詞翻譯",
+            "https://home.gamer.com.tw/artwork.php?sn=9"));
+        var pipeline = Create(
+            new StubLrclib(new LrclibTrack
+            {
+                TrackName = "Hello",
+                ArtistName = "Adele",
+                PlainLyrics = "Hello from the other side",
+                SyncedLyrics = "[00:12.00] Hello from the other side",
+            }),
+            translator,
+            apiKey: "sk-test",
+            bahamut);
+
+        var result = await pipeline.ResolveAsync(Song("Hello", "Adele"), CancellationToken.None);
+
+        Assert.False(translator.WasCalled);
+        Assert.Equal(LyricsSource.Bahamut, result.TranslationSource);
+        Assert.Equal("社群／LRCLIB → 巴哈姆特", result.SourceLabel);
+        Assert.Contains("你好來自另一邊", result.Translation);
+    }
+
+    [Fact]
+    public async Task Web_scrape_is_used_when_bahamut_misses_and_skips_ai()
+    {
+        var translator = new RecordingTranslator { Translation = "不該出現" };
+        var web = new StubWeb(new CommunityTranslation(
+            "網頁譯文一行\n二\n三\n四",
+            "Hello Adele 歌詞翻譯",
+            "https://www.mojim.com/twy1.htm",
+            "Mojim"));
+        var pipeline = Create(
+            new StubLrclib(new LrclibTrack
+            {
+                TrackName = "Hello",
+                ArtistName = "Adele",
+                PlainLyrics = "Hello from the other side",
+            }),
+            translator,
+            apiKey: "sk-test",
+            web: web);
+
+        var result = await pipeline.ResolveAsync(Song("Hello", "Adele"), CancellationToken.None);
+
+        Assert.False(translator.WasCalled);
+        Assert.Equal(LyricsSource.Web, result.TranslationSource);
+        Assert.Equal("社群／LRCLIB → 網頁", result.SourceLabel);
+        Assert.Contains("網頁譯文一行", result.Translation);
+    }
+
+    [Fact]
+    public async Task Cached_ai_is_replaced_when_bahamut_hits_on_replay()
+    {
+        var cache = new MemoryLyricsCache();
+        var query = Song("Hello", "Adele");
+        await cache.UpsertAsync(new CachedLyrics
+        {
+            CacheKey = query.CacheKey,
+            Title = query.DisplayTitle,
+            Artist = query.DisplayArtist,
+            OriginalLyrics = "Hello from the other side",
+            OriginalSource = LyricsSource.Lrclib,
+            Translation = "舊的 AI 譯文",
+            TranslationSource = LyricsSource.Ai,
+            SyncedLyrics = "[00:01.00] Hello",
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+
+        var translator = new RecordingTranslator { Translation = "又不該出現" };
+        var bahamut = new RecordingBahamut(new CommunityTranslation(
+            "社群你好\n第二行\n第三行\n第四行",
+            "Hello Adele 歌詞翻譯",
+            "https://home.gamer.com.tw/artwork.php?sn=9"));
+        var pipeline = new LyricsPipeline(
+            cache,
+            new MissLrclib(),
+            bahamut,
+            new MissWeb(),
+            () => translator,
+            () => new AppSettings { ApiKey = "sk-test" });
+
+        var result = await pipeline.ResolveAsync(query, CancellationToken.None);
+
+        Assert.True(bahamut.WasCalled);
+        Assert.False(translator.WasCalled);
+        Assert.Equal(LyricsSource.Bahamut, result.TranslationSource);
+        Assert.Contains("社群你好", result.Translation);
+        Assert.Equal("[00:01.00] Hello", result.SyncedLyrics);
+    }
+
+    [Fact]
     public async Task Cache_hit_skips_ai_and_keeps_existing_synced()
     {
         var cache = new MemoryLyricsCache();
@@ -75,7 +171,7 @@ public class LyricsPipelineTests
 
         var translator = new RecordingTranslator();
         var lrclib = new MissLrclib();
-        var pipeline = new LyricsPipeline(cache, lrclib, new MissBahamut(), () => translator, () => new AppSettings { ApiKey = "sk-test" });
+        var pipeline = new LyricsPipeline(cache, lrclib, new MissBahamut(), new MissWeb(), () => translator, () => new AppSettings { ApiKey = "sk-test" });
 
         var result = await pipeline.ResolveAsync(query, CancellationToken.None);
 
@@ -110,7 +206,7 @@ public class LyricsPipelineTests
             PlainLyrics = "Hello",
             SyncedLyrics = "[00:05.00] Hello",
         });
-        var pipeline = new LyricsPipeline(cache, lrclib, new MissBahamut(), () => translator, () => new AppSettings { ApiKey = "sk-test" });
+        var pipeline = new LyricsPipeline(cache, lrclib, new MissBahamut(), new MissWeb(), () => translator, () => new AppSettings { ApiKey = "sk-test" });
 
         var result = await pipeline.ResolveAsync(query, CancellationToken.None);
 
@@ -287,7 +383,7 @@ public class LyricsPipelineTests
         });
 
         var translator = new RecordingTranslator { Translation = "我愛你" };
-        var pipeline = new LyricsPipeline(cache, new MissLrclib(), new MissBahamut(), () => translator, () => new AppSettings { ApiKey = "sk-test" });
+        var pipeline = new LyricsPipeline(cache, new MissLrclib(), new MissBahamut(), new MissWeb(), () => translator, () => new AppSettings { ApiKey = "sk-test" });
 
         var result = await pipeline.ResolveAsync(query, CancellationToken.None);
 
@@ -299,8 +395,9 @@ public class LyricsPipelineTests
         ILrclibClient lrclib,
         ILyricsTranslator translator,
         string? apiKey,
-        IBahamutClient? bahamut = null) =>
-        new(new MemoryLyricsCache(), lrclib, bahamut ?? new MissBahamut(), () => translator, () => new AppSettings { ApiKey = apiKey });
+        IBahamutClient? bahamut = null,
+        IWebLyricsClient? web = null) =>
+        new(new MemoryLyricsCache(), lrclib, bahamut ?? new MissBahamut(), web ?? new MissWeb(), () => translator, () => new AppSettings { ApiKey = apiKey });
 
     private static TrackQuery Song(string title, string artist) =>
         TrackNormalizer.FromRaw(title, artist, "THE BOOK", TimeSpan.FromSeconds(200), "Chrome", PlayerKind.Browser, true);
@@ -338,6 +435,29 @@ public class LyricsPipelineTests
     {
         public Task<CommunityTranslation?> FindAsync(TrackQuery query, CancellationToken cancellationToken) =>
             throw new HttpRequestException("timeout");
+    }
+
+    private sealed class MissWeb : IWebLyricsClient
+    {
+        public Task<CommunityTranslation?> FindAsync(TrackQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult<CommunityTranslation?>(null);
+    }
+
+    private sealed class StubWeb(CommunityTranslation translation) : IWebLyricsClient
+    {
+        public Task<CommunityTranslation?> FindAsync(TrackQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult<CommunityTranslation?>(translation);
+    }
+
+    private sealed class RecordingBahamut(CommunityTranslation translation) : IBahamutClient
+    {
+        public bool WasCalled { get; private set; }
+
+        public Task<CommunityTranslation?> FindAsync(TrackQuery query, CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            return Task.FromResult<CommunityTranslation?>(translation);
+        }
     }
 
     private sealed class RecordingTranslator : ILyricsTranslator

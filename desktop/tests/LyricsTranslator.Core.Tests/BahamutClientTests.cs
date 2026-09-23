@@ -41,9 +41,46 @@ public class BahamutClientTests
 
         Assert.NotNull(hit);
         Assert.Contains("在夜裡往前衝", hit!.Translation);
+        Assert.Equal("巴哈姆特", hit.SiteLabel);
         Assert.Contains("search.php", handler.Requested, StringComparison.Ordinal);
         Assert.Contains("artwork.php?sn=1", handler.Requested, StringComparison.Ordinal);
         Assert.DoesNotContain("artwork.php?sn=99", handler.Requested, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task English_title_still_searches_bahamut()
+    {
+        var search =
+            """
+            <a class="TS1" href="artwork.php?sn=9">Hello - Adele 歌詞翻譯</a>
+            """;
+        var article =
+            """
+            <div id="article_content">
+            ▍你好來自另一邊<br>
+            ▍我必須說<br>
+            ▍我已試過<br>
+            ▍告訴你一切
+            </div>
+            """;
+        var handler = new StubHandler
+        {
+            Responses =
+            {
+                ["search.php"] = search,
+                ["artwork.php?sn=9"] = article,
+            },
+        };
+        using var http = new HttpClient(handler);
+        var client = new BahamutClient(http);
+        var query = TrackNormalizer.FromRaw("Hello", "Adele", null, null, "Chrome", PlayerKind.Browser, true);
+
+        var hit = await client.FindAsync(query, CancellationToken.None);
+
+        Assert.NotNull(hit);
+        Assert.Contains("你好來自另一邊", hit!.Translation);
+        Assert.Contains("search.php", handler.Requested, StringComparison.Ordinal);
+        Assert.Contains(Uri.EscapeDataString("Hello"), handler.Requested, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -60,12 +97,12 @@ public class BahamutClientTests
     }
 
     [Fact]
-    public async Task Skips_non_japanese_queries_without_http()
+    public async Task Skips_already_chinese_titles_without_http()
     {
         var handler = new StubHandler();
         using var http = new HttpClient(handler);
         var client = new BahamutClient(http);
-        var query = TrackNormalizer.FromRaw("Hello", "Adele", null, null, "Chrome", PlayerKind.Browser, true);
+        var query = TrackNormalizer.FromRaw("這是繁體歌詞", "歌手", null, null, "Chrome", PlayerKind.Browser, true);
 
         var hit = await client.FindAsync(query, CancellationToken.None);
 

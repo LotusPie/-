@@ -11,6 +11,7 @@ public sealed class LyricsPipeline
     private readonly ILyricsCache _cache;
     private readonly ILrclibClient _lrclib;
     private readonly IBahamutClient _bahamut;
+    private readonly IWebLyricsClient _web;
     private readonly Func<ILyricsTranslator> _translator;
     private readonly Func<AppSettings> _settings;
 
@@ -18,12 +19,14 @@ public sealed class LyricsPipeline
         ILyricsCache cache,
         ILrclibClient lrclib,
         IBahamutClient bahamut,
+        IWebLyricsClient web,
         Func<ILyricsTranslator> translator,
         Func<AppSettings> settings)
     {
         _cache = cache;
         _lrclib = lrclib;
         _bahamut = bahamut;
+        _web = web;
         _translator = translator;
         _settings = settings;
     }
@@ -36,10 +39,13 @@ public sealed class LyricsPipeline
         }
 
         var cached = await _cache.GetAsync(query.CacheKey, cancellationToken).ConfigureAwait(false);
-        if (cached is { OriginalLyrics: { Length: > 0 }, Translation: { Length: > 0 } } &&
-            !IsStaleChineseMisdetect(cached))
+        var communityCached = cached is not null &&
+                              HasUsableTranslation(cached) &&
+                              IsCommunitySource(cached.TranslationSource);
+
+        if (communityCached)
         {
-            var synced = cached.SyncedLyrics;
+            var synced = cached!.SyncedLyrics;
             if (string.IsNullOrWhiteSpace(synced))
             {
                 synced = await TrySyncedFromLrclibAsync(query, cancellationToken).ConfigureAwait(false);
@@ -60,8 +66,14 @@ public sealed class LyricsPipeline
         long? lrclibId = cached?.LrclibId;
         string? syncedLyrics = cached?.SyncedLyrics;
         var instrumental = false;
-        string? translation = cached is not null && !IsStaleChineseMisdetect(cached) ? cached.Translation : null;
-        var translationSource = string.IsNullOrWhiteSpace(translation) ? LyricsSource.None : cached!.TranslationSource;
+        string? aiFallback = cached is { TranslationSource: LyricsSource.Ai } && HasUsableTranslation(cached)
+            ? cached.Translation
+            : null;
+
+        // Community scrape BEFORE any LLM, even if an old AI row is in SQLite.
+        var community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
+        string? translation = community?.Translation;
+        var translationSource = community is null ? LyricsSource.None : BahamutParser.SourceFromSite(community.SiteLabel);
 
         if (string.IsNullOrWhiteSpace(original) || string.IsNullOrWhiteSpace(syncedLyrics))
         {
@@ -76,7 +88,7 @@ public sealed class LyricsPipeline
             }
             catch
             {
-                // Fall through; Bahamut / paste / AI may still work.
+                // Fall through; community / paste / AI may still work.
             }
 
             if (hit is not null)
@@ -106,28 +118,21 @@ public sealed class LyricsPipeline
             return ToDisplay(query, null, null, LyricsSource.Lrclib, LyricsSource.None, LyricsStatus.Instrumental, "這首歌是純音樂，沒有歌詞。", syncedLyrics);
         }
 
-        if (string.IsNullOrWhiteSpace(translation) && BahamutParser.ShouldSearch(query))
+        if (!string.IsNullOrWhiteSpace(translation))
         {
-            try
+            if (string.IsNullOrWhiteSpace(original))
             {
-                var community = await _bahamut.FindAsync(query, cancellationToken).ConfigureAwait(false);
-                if (community is not null && !string.IsNullOrWhiteSpace(community.Translation))
-                {
-                    translation = community.Translation;
-                    translationSource = LyricsSource.Bahamut;
-                }
+                var communityOnly = BuildRecord(query, null, LyricsSource.None, translation, translationSource, lrclibId, syncedLyrics);
+                await _cache.UpsertAsync(communityOnly, cancellationToken).ConfigureAwait(false);
+                return ToDisplay(query, null, translation, LyricsSource.None, translationSource, LyricsStatus.Ready, "已找到社群繁中譯詞；原文可再手貼。", syncedLyrics);
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                // Timeout / HTML change → AI or paste.
-            }
+
+            var stored = BuildRecord(query, original, originalSource, translation, translationSource, lrclibId, syncedLyrics);
+            await _cache.UpsertAsync(stored, cancellationToken).ConfigureAwait(false);
+            return ToDisplay(query, original, translation, originalSource, translationSource, LyricsStatus.Ready, null, syncedLyrics);
         }
 
-        if (string.IsNullOrWhiteSpace(original) && string.IsNullOrWhiteSpace(translation))
+        if (string.IsNullOrWhiteSpace(original))
         {
             return ToDisplay(
                 query,
@@ -140,30 +145,22 @@ public sealed class LyricsPipeline
                 syncedLyrics);
         }
 
-        if (string.IsNullOrWhiteSpace(original) && !string.IsNullOrWhiteSpace(translation))
-        {
-            var communityOnly = BuildRecord(query, null, LyricsSource.None, translation, translationSource, lrclibId, syncedLyrics);
-            await _cache.UpsertAsync(communityOnly, cancellationToken).ConfigureAwait(false);
-            return ToDisplay(query, null, translation, LyricsSource.None, translationSource, LyricsStatus.Ready, "已找到社群繁中譯詞；原文可再手貼。", syncedLyrics);
-        }
-
         if (LanguageDetector.LooksLikeAlreadyTaiwanMandarinLyrics(original) &&
-            !LanguageDetector.LooksLikeSimplifiedChinese(original) &&
-            string.IsNullOrWhiteSpace(translation))
+            !LanguageDetector.LooksLikeSimplifiedChinese(original))
         {
             var ready = BuildRecord(query, original, originalSource, original, originalSource, lrclibId, syncedLyrics);
             await _cache.UpsertAsync(ready, cancellationToken).ConfigureAwait(false);
             return ToDisplay(query, original, original, originalSource, originalSource, LyricsStatus.Ready, "原文已是繁體中文。", syncedLyrics);
         }
 
-        if (!string.IsNullOrWhiteSpace(translation))
+        if (!string.IsNullOrWhiteSpace(aiFallback))
         {
-            var stored = BuildRecord(query, original, originalSource, translation, translationSource, lrclibId, syncedLyrics);
-            await _cache.UpsertAsync(stored, cancellationToken).ConfigureAwait(false);
-            return ToDisplay(query, original, translation, originalSource, translationSource, LyricsStatus.Ready, null, syncedLyrics);
+            var keepAi = BuildRecord(query, original, originalSource, aiFallback, LyricsSource.Ai, lrclibId, syncedLyrics);
+            await _cache.UpsertAsync(keepAi, cancellationToken).ConfigureAwait(false);
+            return ToDisplay(query, original, aiFallback, originalSource, LyricsSource.Ai, LyricsStatus.Ready, null, syncedLyrics);
         }
 
-        return await TranslateAndStoreAsync(query, original!, originalSource, lrclibId, previous: null, hint: null, syncedLyrics, cancellationToken)
+        return await TranslateAndStoreAsync(query, original, originalSource, lrclibId, previous: null, hint: null, syncedLyrics, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -183,6 +180,15 @@ public sealed class LyricsPipeline
         if (string.IsNullOrWhiteSpace(synced))
         {
             synced = await TrySyncedFromLrclibAsync(query, cancellationToken).ConfigureAwait(false);
+        }
+
+        var community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
+        if (community is not null && !string.IsNullOrWhiteSpace(community.Translation))
+        {
+            var source = BahamutParser.SourceFromSite(community.SiteLabel);
+            var stored = BuildRecord(query, original, LyricsSource.Paste, community.Translation, source, cached?.LrclibId, synced);
+            await _cache.UpsertAsync(stored, cancellationToken).ConfigureAwait(false);
+            return ToDisplay(query, original, community.Translation, LyricsSource.Paste, source, LyricsStatus.Ready, null, synced);
         }
 
         return await TranslateAndStoreAsync(query, original, LyricsSource.Paste, cached?.LrclibId, previous: null, hint: null, synced, cancellationToken)
@@ -216,6 +222,45 @@ public sealed class LyricsPipeline
                 synced,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async Task<CommunityTranslation?> TryCommunityAsync(TrackQuery query, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var bahamut = await _bahamut.FindAsync(query, cancellationToken).ConfigureAwait(false);
+            if (bahamut is not null && !string.IsNullOrWhiteSpace(bahamut.Translation))
+            {
+                return bahamut;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Timeout / HTML change → web search or AI.
+        }
+
+        try
+        {
+            var web = await _web.FindAsync(query, cancellationToken).ConfigureAwait(false);
+            if (web is not null && !string.IsNullOrWhiteSpace(web.Translation))
+            {
+                return web;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Optional fallback; AI is last resort.
+        }
+
+        return null;
     }
 
     private async Task<string?> TrySyncedFromLrclibAsync(TrackQuery query, CancellationToken cancellationToken)
@@ -332,6 +377,13 @@ public sealed class LyricsPipeline
         LyricsSource translationSource,
         string message,
         string? syncedLyrics) => ToDisplay(query, original, translation, originalSource, translationSource, LyricsStatus.Error, message, syncedLyrics);
+
+    private static bool IsCommunitySource(LyricsSource source) =>
+        source is LyricsSource.Bahamut or LyricsSource.Web;
+
+    private static bool HasUsableTranslation(CachedLyrics cached) =>
+        !string.IsNullOrWhiteSpace(cached.Translation) &&
+        !IsStaleChineseMisdetect(cached);
 
     private static bool IsStaleChineseMisdetect(CachedLyrics cached) =>
         string.Equals(cached.OriginalLyrics, cached.Translation, StringComparison.Ordinal) &&

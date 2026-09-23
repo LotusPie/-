@@ -29,6 +29,7 @@ public enum LyricsSource
     Ai,
     Paste,
     Bahamut,
+    Web,
 }
 
 public enum LyricsStatus
