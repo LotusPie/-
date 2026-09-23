@@ -70,7 +70,7 @@ public sealed partial class DuckDuckGoLyricsClient : IWebLyricsClient
                 continue;
             }
 
-            foreach (var hit in Rank(hits, query).Take(5))
+            foreach (var hit in Rank(hits, query, keyword).Take(5))
             {
                 if (!tried.Add(hit.Url.AbsoluteUri))
                 {
@@ -117,9 +117,9 @@ public sealed partial class DuckDuckGoLyricsClient : IWebLyricsClient
         return hits;
     }
 
-    public static IEnumerable<WebHit> Rank(IEnumerable<WebHit> hits, TrackQuery query) =>
+    public static IEnumerable<WebHit> Rank(IEnumerable<WebHit> hits, TrackQuery query, string? searchKeyword = null) =>
         hits
-            .Select(h => (Hit: h, Score: BahamutParser.ScoreHit(new BahamutSearchHit("0", h.Title, h.Url.AbsoluteUri), query)))
+            .Select(h => (Hit: h, Score: BahamutParser.ScoreHit(new BahamutSearchHit("0", h.Title, h.Url.AbsoluteUri), query, searchKeyword)))
             .Where(x => x.Score > 0)
             .OrderByDescending(x => x.Score)
             .Select(x => x.Hit);

@@ -10,6 +10,7 @@ public static class TitleAliases
     [
         ["Sunny", "晴る"],
         ["花一匁", "Hanaichi Monnme", "Hanaichi Monme", "Hanaichimonme"],
+        ["青い栞", "Aoi Shiori"],
     ];
 
     public static IReadOnlyList<string> Variants(string title)

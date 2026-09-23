@@ -82,7 +82,12 @@ public sealed class LyricsPipeline
         string? translation = community?.Translation;
         var translationSource = community is null ? LyricsSource.None : BahamutParser.SourceFromSite(community.SiteLabel);
 
-        if (string.IsNullOrWhiteSpace(original) || string.IsNullOrWhiteSpace(syncedLyrics))
+        // LRCLIB only fills original / LRC. Missing 繁中 is not a reason to call it
+        // (that used to skip Bahamut and jump to Gemini). Retry community after
+        // LRCLIB recovers native names so romaji SMTC still finds 日+羅+中 posts.
+        var needLrclib = string.IsNullOrWhiteSpace(original) ||
+                         string.IsNullOrWhiteSpace(syncedLyrics);
+        if (needLrclib)
         {
             LrclibTrack? hit = null;
             try
@@ -102,16 +107,6 @@ public sealed class LyricsPipeline
             {
                 lrclibId = hit.Id;
                 query = query.WithRecovered(hit.TrackName, hit.ArtistName);
-                if (community is null &&
-                    LanguageDetector.LooksLikeJapaneseOrKanjiTitle(hit.TrackName))
-                {
-                    community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
-                    if (community is not null)
-                    {
-                        translation = community.Translation;
-                        translationSource = BahamutParser.SourceFromSite(community.SiteLabel);
-                    }
-                }
 
                 if (string.IsNullOrWhiteSpace(syncedLyrics) && !string.IsNullOrWhiteSpace(hit.SyncedLyrics))
                 {
@@ -126,6 +121,16 @@ public sealed class LyricsPipeline
                 {
                     original = hit.EffectivePlainLyrics;
                     originalSource = LyricsSource.Lrclib;
+                }
+
+                if (string.IsNullOrWhiteSpace(translation))
+                {
+                    community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
+                    if (community is not null)
+                    {
+                        translation = community.Translation;
+                        translationSource = BahamutParser.SourceFromSite(community.SiteLabel);
+                    }
                 }
             }
         }

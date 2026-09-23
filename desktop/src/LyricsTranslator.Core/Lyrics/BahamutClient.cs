@@ -77,7 +77,7 @@ public sealed class BahamutClient : IBahamutClient
         }
 
         var ranked = BahamutParser.ParseSearchHits(html)
-            .Select(h => (Hit: h, Score: BahamutParser.ScoreHit(h, query)))
+            .Select(h => (Hit: h, Score: BahamutParser.ScoreHit(h, query, keyword)))
             .Where(x => x.Score > 0)
             .OrderByDescending(x => x.Score)
             .ToList();

@@ -6,9 +6,38 @@ internal static class BahamutFixture
 {
     public const string SunnyArtworkUrl = "https://home.gamer.com.tw/artwork.php?sn=5859521";
     public const string SunnySn = "5859521";
+    public const string AoiShioriArtworkUrl = "https://home.gamer.com.tw/artwork.php?sn=3854760";
+    public const string AoiShioriSn = "3854760";
 
     public static string PathToSunnyArtwork =>
         Path.Combine(AppContext.BaseDirectory, "Fixtures", "bahamut-5859521.html");
+
+    public static string PathToAoiShioriArtwork =>
+        Path.Combine(AppContext.BaseDirectory, "Fixtures", "bahamut-3854760.html");
+
+    public static string ReadAoiShioriArtwork() => File.ReadAllText(PathToAoiShioriArtwork);
+
+    public static async Task<string> LoadAoiShioriArtworkAsync()
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd(BahamutClient.UserAgent);
+            http.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-TW,zh;q=0.9");
+            var html = await http.GetStringAsync(AoiShioriArtworkUrl);
+            if (html.Contains("不管要用掉多少頁", StringComparison.Ordinal) &&
+                html.Contains("article_content", StringComparison.OrdinalIgnoreCase))
+            {
+                return html;
+            }
+        }
+        catch (Exception)
+        {
+            // CI / offline: use the fixture checked into the repo.
+        }
+
+        return ReadAoiShioriArtwork();
+    }
 
     public static string ReadSunnyArtwork() => File.ReadAllText(PathToSunnyArtwork);
 

@@ -160,6 +160,48 @@ public class BahamutClientTests
             RequestedContains(handler.Requested, "晴る"));
     }
 
+    [Fact]
+    public async Task Finds_aoi_shiori_from_romaji_search_using_jp_romaji_zh_artwork()
+    {
+        const string searchHit =
+            """
+            <a class="TS1" href="artwork.php?sn=3854760">青い栞- Galileo Galilei 日+羅+中 歌詞</a>
+            """;
+        var fixture = BahamutFixture.ReadAoiShioriArtwork();
+        var handler = new PredicateHandler(url =>
+        {
+            if (url.Contains("artwork.php?sn=3854760", StringComparison.OrdinalIgnoreCase))
+            {
+                return fixture;
+            }
+
+            if (!url.Contains("search.php", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var decoded = Uri.UnescapeDataString(url);
+            if (decoded.Contains("Aoi Shiori", StringComparison.OrdinalIgnoreCase) ||
+                decoded.Contains("青い栞", StringComparison.Ordinal) ||
+                decoded.Contains("日+羅+中", StringComparison.Ordinal))
+            {
+                return searchHit;
+            }
+
+            return "<html><body>nope</body></html>";
+        });
+        using var http = new HttpClient(handler);
+        var client = new BahamutClient(http);
+
+        var hit = await client.FindAsync(BahamutParserTests.YoutubeAoiShiori(), CancellationToken.None);
+
+        Assert.NotNull(hit);
+        Assert.Equal("巴哈姆特", hit!.SiteLabel);
+        Assert.Contains("不管要用掉多少頁", hit.Translation);
+        Assert.DoesNotContain("Nan PAGE", hit.Translation, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("3854760", handler.Requested, StringComparison.Ordinal);
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         public Dictionary<string, string> Responses { get; } = new(StringComparer.OrdinalIgnoreCase);

@@ -30,14 +30,20 @@ public static class SourceLabelFormatter
             _ => null,
         };
 
-        if (originalText is null && translationText is null)
+        if (translationText is null)
         {
-            return string.Empty;
+            if (originalText is null)
+            {
+                return string.Empty;
+            }
+
+            // Japanese original alone is not a finished lookup (Aoi Shiori + Gemini 429).
+            return $"{originalText}（尚無繁中）";
         }
 
-        if (translationText is null || translationText == originalText)
+        if (translationText == originalText)
         {
-            return originalText ?? translationText ?? string.Empty;
+            return originalText ?? translationText;
         }
 
         if (originalText is null)

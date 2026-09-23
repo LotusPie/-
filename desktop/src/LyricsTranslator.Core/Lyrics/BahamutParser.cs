@@ -35,13 +35,14 @@ public static partial class BahamutParser
         return true;
     }
 
-    public const int MaxSearchQueries = 16;
+    public const int MaxSearchQueries = 20;
 
     private static readonly string[] LyricQuerySuffixes =
     [
         "歌詞",
         "歌詞翻譯",
         "中日歌詞",
+        "日+羅+中",
         "中文歌詞",
         "中文翻譯",
     ];
@@ -82,6 +83,8 @@ public static partial class BahamutParser
             if (artist.Length > 0)
             {
                 TryAdd(queries, $"{aliasTitle} {artist}");
+                TryAdd(queries, $"{aliasTitle} {artist} 歌詞");
+                TryAdd(queries, $"{aliasTitle} {artist} 歌詞翻譯");
             }
         }
 
@@ -129,7 +132,7 @@ public static partial class BahamutParser
         return hits;
     }
 
-    public static int ScoreHit(BahamutSearchHit hit, TrackQuery query)
+    public static int ScoreHit(BahamutSearchHit hit, TrackQuery query, string? searchKeyword = null)
     {
         var title = hit.Title;
         if (IsJunkTitle(title))
@@ -149,19 +152,27 @@ public static partial class BahamutParser
             .Where(static compact => compact.Length >= 2)
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        if (titleVariants.Count == 0 || !titleVariants.Any(compact => compactHit.Contains(compact, StringComparison.Ordinal)))
-        {
-            return 0;
-        }
-
+        var titleInHit = titleVariants.Count > 0 &&
+                         titleVariants.Any(compact => compactHit.Contains(compact, StringComparison.Ordinal));
+        var compactKeyword = CompactForMatch(searchKeyword ?? string.Empty);
+        var keywordLinksTitle = compactKeyword.Length >= 2 &&
+                                titleVariants.Any(compact => compactKeyword.Contains(compact, StringComparison.Ordinal));
         var compactTitle = CompactForMatch(query.DisplayTitle);
         var compactArtist = CompactForMatch(query.DisplayArtist);
         var artistMatched = TrackLookup.Artists(query)
             .Select(CompactForMatch)
             .Any(compact => compact.Length >= 2 && compactHit.Contains(compact, StringComparison.Ordinal));
 
-        // Short Latin titles ("Hello", "Stay") match too many unrelated posts unless the artist
-        // (or a native title alias such as 晴る for Sunny) is in the post title.
+        // Romaji SMTC (Aoi Shiori) vs Japanese post title (青い栞): Bahamut search still
+        // returned this hit for our title 歌詞 query, artist matches, and it is a 中日/日+羅+中 post.
+        if (!titleInHit)
+        {
+            if (!(artistMatched && lyricHint >= 50 && keywordLinksTitle))
+            {
+                return 0;
+            }
+        }
+
         var nativeTitleInHit = titleVariants.Any(compact =>
             !IsShortLatin(compact) && compactHit.Contains(compact, StringComparison.Ordinal));
         if (IsShortLatin(compactTitle) && compactArtist.Length >= 2 && !artistMatched && !nativeTitleInHit)
@@ -173,6 +184,11 @@ public static partial class BahamutParser
         if (artistMatched)
         {
             score += 40;
+        }
+
+        if (titleInHit)
+        {
+            score += 20;
         }
 
         if (title.Contains("填詞", StringComparison.Ordinal))
@@ -319,7 +335,7 @@ public static partial class BahamutParser
     private static readonly string[] NativeTitleJunk =
     [
         "中日歌詞", "中韓歌詞", "中英歌詞", "中文歌詞", "歌詞翻譯", "中文翻譯",
-        "全曲翻譯", "巴哈姆特", "創作大廳", "歌詞中文翻譯",
+        "全曲翻譯", "巴哈姆特", "創作大廳", "歌詞中文翻譯", "日羅中",
     ];
 
     private static readonly string[] ArticleEndNeedles =
@@ -389,6 +405,8 @@ public static partial class BahamutParser
     {
         if (title.Contains("歌詞翻譯", StringComparison.Ordinal) ||
             title.Contains("中日歌詞", StringComparison.Ordinal) ||
+            title.Contains("日+羅+中", StringComparison.Ordinal) ||
+            title.Contains("日羅中", StringComparison.Ordinal) ||
             title.Contains("中韓歌詞", StringComparison.Ordinal) ||
             title.Contains("中英歌詞", StringComparison.Ordinal))
         {

@@ -104,6 +104,7 @@ public class BahamutParserTests
         var unrelated = new BahamutSearchHit("1", "HELLO WORLD - LiSA 中日歌詞翻譯", "https://example.test/1");
         var matched = new BahamutSearchHit("2", "Hello - Adele 歌詞翻譯", "https://example.test/2");
         Assert.Equal(0, BahamutParser.ScoreHit(unrelated, query));
+        Assert.Equal(0, BahamutParser.ScoreHit(unrelated, query, "Hello 歌詞"));
         Assert.True(BahamutParser.ScoreHit(matched, query) > 100);
     }
 
@@ -284,6 +285,68 @@ public class BahamutParserTests
         Assert.DoesNotContain("貴方は風のように", lyrics, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Build_search_queries_for_aoi_shiori_include_romaji_and_native()
+    {
+        var queries = BahamutParser.BuildSearchQueries(YoutubeAoiShiori()).ToList();
+        Assert.Contains("Aoi Shiori 歌詞", queries);
+        Assert.Contains("青い栞 歌詞", queries);
+        Assert.Contains("Aoi Shiori Galileo Galilei 歌詞翻譯", queries);
+        Assert.Contains("青い栞 中日歌詞", queries);
+        Assert.True(queries.Count <= BahamutParser.MaxSearchQueries);
+        Assert.True(queries.FindIndex(q => q.Contains("青い栞", StringComparison.Ordinal)) <
+                    queries.FindIndex(q => q.Contains("Aoi Shiori", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Scores_aoi_shiori_against_jp_romaji_zh_bahamut_post()
+    {
+        var query = YoutubeAoiShiori();
+        var hit = new BahamutSearchHit(
+            BahamutFixture.AoiShioriSn,
+            "青い栞- Galileo Galilei 日+羅+中 歌詞",
+            BahamutFixture.AoiShioriArtworkUrl);
+        Assert.True(BahamutParser.ScoreHit(hit, query) > 100);
+        Assert.True(BahamutParser.ScoreHit(hit, query, "Aoi Shiori 歌詞") > 100);
+    }
+
+    [Fact]
+    public void Romaji_playing_title_scores_jp_romaji_zh_hit_from_search_keyword()
+    {
+        var query = Song("Kimi no Shiranai Monogatari", "Supercell");
+        var hit = new BahamutSearchHit(
+            "1",
+            "君の知らない物語- supercell 日+羅+中歌詞",
+            "https://home.gamer.com.tw/artwork.php?sn=1");
+        Assert.Equal(0, BahamutParser.ScoreHit(hit, query));
+        Assert.True(BahamutParser.ScoreHit(hit, query, "Kimi no Shiranai Monogatari 歌詞") > 100);
+        Assert.True(BahamutParser.ScoreHit(hit, query, "Kimi no Shiranai Monogatari Supercell 歌詞翻譯") > 100);
+    }
+
+    [Fact]
+    public void Fixture_html_extracts_jp_romaji_zh_aoi_shiori()
+    {
+        var html = BahamutFixture.ReadAoiShioriArtwork();
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(BahamutParser.ExtractArticleText(html));
+        Assert.NotNull(lyrics);
+        Assert.Contains("不管要用掉多少頁", lyrics);
+        Assert.Contains("都只想讓我們的心情得以描述", lyrics);
+        Assert.DoesNotContain("Nan PAGE", lyrics, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("何ページ", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("請見諒", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("上一篇", lyrics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Live_or_fixture_sn_3854760_extracts_traditional_chinese()
+    {
+        var html = await BahamutFixture.LoadAoiShioriArtworkAsync();
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(BahamutParser.ExtractArticleText(html));
+        Assert.NotNull(lyrics);
+        Assert.Contains("不管要用掉多少頁", lyrics);
+        Assert.DoesNotContain("tsuiyashite", lyrics, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static TrackQuery Song(string title, string artist) =>
         TrackNormalizer.FromRaw(title, artist, null, TimeSpan.FromSeconds(260), "Chrome", PlayerKind.Browser, true);
 
@@ -295,5 +358,15 @@ public class BahamutParserTests
             TimeSpan.FromSeconds(268),
             "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App",
             PlayerKind.AppleMusic,
+            true);
+
+    internal static TrackQuery YoutubeAoiShiori() =>
+        TrackNormalizer.FromRaw(
+            "Aoi Shiori",
+            "Galileo Galilei",
+            null,
+            TimeSpan.FromSeconds(337),
+            "Chrome",
+            PlayerKind.Browser,
             true);
 }

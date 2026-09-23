@@ -297,6 +297,135 @@ public class LyricsPipelineTests
     }
 
     [Fact]
+    public async Task Aoi_shiori_uses_bahamut_and_skips_gemini()
+    {
+        var translator = new RecordingTranslator { Translation = "不該出現" };
+        var bahamut = new RecordingBahamut(new CommunityTranslation(
+            "不管要用掉多少頁\n都只想讓我們的心情得以描述\n為何依然無法填滿\n唯獨留下在那的一行空白",
+            "青い栞- Galileo Galilei 日+羅+中 歌詞",
+            BahamutFixture.AoiShioriArtworkUrl));
+        var pipeline = Create(
+            new StubLrclib(new LrclibTrack
+            {
+                TrackName = "Aoi Shiori",
+                ArtistName = "Galileo Galilei",
+                Duration = 337,
+                PlainLyrics = "何ページもついやして",
+                SyncedLyrics = "[00:12.00] 何ページもついやして",
+            }),
+            translator,
+            apiKey: "sk-test",
+            bahamut);
+
+        var result = await pipeline.ResolveAsync(BahamutParserTests.YoutubeAoiShiori(), CancellationToken.None);
+
+        Assert.True(bahamut.WasCalled);
+        Assert.False(translator.WasCalled);
+        Assert.Equal(LyricsSource.Bahamut, result.TranslationSource);
+        Assert.Equal("社群／LRCLIB → 巴哈姆特", result.SourceLabel);
+        Assert.Contains("不管要用掉多少頁", result.Translation);
+    }
+
+    [Fact]
+    public async Task Lrclib_original_still_scrapes_bahamut_before_gemini()
+    {
+        var translator = new RecordingTranslator { Translation = "不該出現" };
+        var bahamut = new BahamutAfterRecovered(
+            new CommunityTranslation(
+                "不管要用掉多少頁\n都只想讓我們的心情得以描述\n為何依然無法填滿\n唯獨留下在那的一行空白",
+                "青い栞- Galileo Galilei 日+羅+中 歌詞",
+                BahamutFixture.AoiShioriArtworkUrl));
+        var pipeline = Create(
+            new StubLrclib(new LrclibTrack
+            {
+                TrackName = "青い栞",
+                ArtistName = "Galileo Galilei",
+                Duration = 337,
+                PlainLyrics = "何ページもついやして",
+                SyncedLyrics = "[00:12.00] 何ページもついやして",
+            }),
+            translator,
+            apiKey: "sk-test",
+            bahamut);
+
+        var query = TrackNormalizer.FromRaw(
+            "Romaji Only Title",
+            "Galileo Galilei",
+            null,
+            TimeSpan.FromSeconds(337),
+            "Chrome",
+            PlayerKind.Browser,
+            true);
+        var result = await pipeline.ResolveAsync(query, CancellationToken.None);
+
+        Assert.True(bahamut.Calls >= 2);
+        Assert.False(translator.WasCalled);
+        Assert.Equal(LyricsSource.Bahamut, result.TranslationSource);
+        Assert.Contains("不管要用掉多少頁", result.Translation);
+    }
+
+    [Fact]
+    public async Task Cached_lrclib_original_without_translation_still_tries_bahamut()
+    {
+        var cache = new MemoryLyricsCache();
+        var query = BahamutParserTests.YoutubeAoiShiori();
+        await cache.UpsertAsync(new CachedLyrics
+        {
+            CacheKey = query.CacheKey,
+            Title = query.DisplayTitle,
+            Artist = query.DisplayArtist,
+            OriginalLyrics = "何ページもついやして",
+            OriginalSource = LyricsSource.Lrclib,
+            Translation = null,
+            TranslationSource = LyricsSource.None,
+            SyncedLyrics = "[00:12.00] 何ページもついやして",
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+
+        var translator = new RecordingTranslator { Translation = "不該出現" };
+        var bahamut = new RecordingBahamut(new CommunityTranslation(
+            "不管要用掉多少頁\n都只想讓我們的心情得以描述\n為何依然無法填滿\n唯獨留下在那的一行空白",
+            "青い栞- Galileo Galilei 日+羅+中 歌詞",
+            BahamutFixture.AoiShioriArtworkUrl));
+        var pipeline = new LyricsPipeline(
+            cache,
+            new MissLrclib(),
+            bahamut,
+            new MissWeb(),
+            () => translator,
+            () => new AppSettings { ApiKey = "sk-test" });
+
+        var result = await pipeline.ResolveAsync(query, CancellationToken.None);
+
+        Assert.True(bahamut.WasCalled);
+        Assert.False(translator.WasCalled);
+        Assert.Equal(LyricsSource.Bahamut, result.TranslationSource);
+    }
+
+    [Fact]
+    public async Task Gemini_rate_limit_does_not_look_like_success_without_translation()
+    {
+        var translator = new ThrowingTranslator("Gemini 呼叫過於頻繁");
+        var pipeline = Create(
+            new StubLrclib(new LrclibTrack
+            {
+                TrackName = "Aoi Shiori",
+                ArtistName = "Galileo Galilei",
+                PlainLyrics = "何ページもついやして",
+            }),
+            translator,
+            apiKey: "sk-test");
+
+        var result = await pipeline.ResolveAsync(BahamutParserTests.YoutubeAoiShiori(), CancellationToken.None);
+
+        Assert.Equal(LyricsStatus.Error, result.Status);
+        Assert.Null(result.Translation);
+        Assert.Equal("社群／LRCLIB（尚無繁中）", result.SourceLabel);
+        Assert.Contains("頻繁", result.Message);
+        Assert.True(translator.WasCalled);
+    }
+
+    [Fact]
     public async Task Paste_then_translate_is_labeled_hand_paste()
     {
         var translator = new RecordingTranslator { Translation = "手貼譯文" };
@@ -342,6 +471,7 @@ public class LyricsPipelineTests
         Assert.Equal(LyricsStatus.NeedsApiKey, result.Status);
         Assert.Equal("Hello", result.OriginalLyrics);
         Assert.Null(result.Translation);
+        Assert.Equal("社群／LRCLIB（尚無繁中）", result.SourceLabel);
     }
 
     [Fact]
@@ -490,6 +620,23 @@ public class LyricsPipelineTests
         }
     }
 
+    private sealed class BahamutAfterRecovered(CommunityTranslation translation) : IBahamutClient
+    {
+        public int Calls { get; private set; }
+
+        public Task<CommunityTranslation?> FindAsync(TrackQuery query, CancellationToken cancellationToken)
+        {
+            Calls++;
+            var titles = TrackLookup.Titles(query);
+            if (titles.Any(t => t.Contains("青い栞", StringComparison.Ordinal)))
+            {
+                return Task.FromResult<CommunityTranslation?>(translation);
+            }
+
+            return Task.FromResult<CommunityTranslation?>(null);
+        }
+    }
+
     private sealed class RecordingTranslator : ILyricsTranslator
     {
         public bool WasCalled { get; private set; }
@@ -501,6 +648,17 @@ public class LyricsPipelineTests
             WasCalled = true;
             LastRequest = request;
             return Task.FromResult(Translation);
+        }
+    }
+
+    private sealed class ThrowingTranslator(string message) : ILyricsTranslator
+    {
+        public bool WasCalled { get; private set; }
+
+        public Task<string> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            throw new InvalidOperationException(message);
         }
     }
 

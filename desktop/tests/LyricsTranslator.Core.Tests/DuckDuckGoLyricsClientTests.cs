@@ -57,6 +57,23 @@ public class DuckDuckGoLyricsClientTests
     }
 
     [Fact]
+    public void Rank_matches_aoi_shiori_romaji_to_jp_romaji_zh_post()
+    {
+        var query = BahamutParserTests.YoutubeAoiShiori();
+        var hits = new[]
+        {
+            new DuckDuckGoLyricsClient.WebHit("日本遊記 Aoi", new Uri("https://home.gamer.com.tw/artwork.php?sn=1")),
+            new DuckDuckGoLyricsClient.WebHit(
+                "青い栞- Galileo Galilei 日+羅+中 歌詞",
+                new Uri(BahamutFixture.AoiShioriArtworkUrl)),
+        };
+
+        var ranked = DuckDuckGoLyricsClient.Rank(hits, query, "Aoi Shiori 歌詞").ToList();
+        Assert.Single(ranked);
+        Assert.Equal(BahamutFixture.AoiShioriArtworkUrl, ranked[0].Url.AbsoluteUri);
+    }
+
+    [Fact]
     public async Task Fetches_translation_from_allowlisted_page()
     {
         var search =
