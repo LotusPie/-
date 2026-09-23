@@ -42,3 +42,11 @@ public enum LyricsStatus
     Instrumental,
     Error,
 }
+
+public enum LyricLanguage
+{
+    Other,
+    Japanese,
+    Korean,
+    English,
+}

@@ -113,6 +113,37 @@ public class LrclibRankingTests
     }
 
     [Fact]
+    public void Rank_timed_does_not_prefer_romaji_when_japanese_original_is_known()
+    {
+        var query = TrackNormalizer.FromRaw(
+            "Hanaichi Monnme",
+            "BURNOUT SYNDROMES",
+            null,
+            TimeSpan.FromSeconds(275),
+            "AppleMusic",
+            PlayerKind.AppleMusic,
+            true);
+        var romaji = new LrclibTrack
+        {
+            TrackName = "Hanaichi Monnme",
+            ArtistName = "BURNOUT SYNDROMES",
+            Duration = 275,
+            SyncedLyrics = "[00:01.00]abc\n[00:02.00]def\n[00:03.00]ghi",
+        };
+        var japanese = new LrclibTrack
+        {
+            TrackName = "花一匁",
+            ArtistName = "BURNOUT SYNDROMES",
+            Duration = 275,
+            SyncedLyrics = "[00:01.00]花一匁だよ\n[00:02.00]正しい歌詞\n[00:03.00]まだ仮名",
+        };
+
+        var timed = LrclibClient.RankTimed([romaji, japanese], query).ToList();
+        Assert.Equal("花一匁", timed[0].TrackName);
+        Assert.DoesNotContain(timed, t => t.TrackName == "Hanaichi Monnme");
+    }
+
+    [Fact]
     public void Strips_lrc_timestamps()
     {
         var plain = LrclibClient.StripLrcTimestamps("[00:12.00]hello\n[00:15.50]world");

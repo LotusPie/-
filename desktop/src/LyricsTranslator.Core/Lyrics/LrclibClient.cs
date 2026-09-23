@@ -285,6 +285,23 @@ public sealed partial class LrclibClient : ILrclibClient
         return score;
     }
 
+    /// <summary>
+    /// Timed LRC only: Japanese original known → Japanese-script title + Japanese LRC, never a romaji dump.
+    /// </summary>
+    public static IEnumerable<LrclibTrack> RankTimed(IEnumerable<LrclibTrack> tracks, TrackQuery query)
+    {
+        var language = LyricLanguageDetector.Detect(query);
+        return Rank(tracks, query)
+            .Where(t => !string.IsNullOrWhiteSpace(t.SyncedLyrics))
+            .Where(t => LrcLanguageFilter.Fits(t.SyncedLyrics, language))
+            .Where(t => language != LyricLanguage.Japanese ||
+                        LanguageDetector.LooksLikeJapaneseOrKanjiTitle(t.TrackName) ||
+                        LanguageDetector.LooksLikeJapanese(t.TrackName))
+            .Where(t => language != LyricLanguage.Korean ||
+                        LanguageDetector.LooksLikeKorean(t.TrackName) ||
+                        LanguageDetector.LooksLikeKorean(t.SyncedLyrics));
+    }
+
     public static string? StripLrcTimestamps(string? synced)
     {
         if (string.IsNullOrWhiteSpace(synced))

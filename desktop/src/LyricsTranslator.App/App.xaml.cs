@@ -45,10 +45,15 @@ public partial class App : Application
         _aiHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
 
         var lrclib = new LrclibClient(_lrclibHttp);
+        var neteaseHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var timed = new TimedLyricsRouter(
+            new NeteaseTimedLyricsClient(neteaseHttp),
+            new LrclibTimedLyricsSource(lrclib));
+        var lyrics = new LanguageAwareLrclibClient(lrclib, timed);
         var bahamut = new BahamutClient(_bahamutHttp);
         var web = new DuckDuckGoLyricsClient(_bahamutHttp);
         var translators = new TranslatorFactory(_aiHttp, settings.Snapshot);
-        var pipeline = new LyricsPipeline(_cache, lrclib, bahamut, web, translators.Create, settings.Snapshot);
+        var pipeline = new LyricsPipeline(_cache, lyrics, bahamut, web, translators.Create, settings.Snapshot);
         _smtc = new SmtcNowPlayingSource(settings);
 
         _window = new MainWindow(pipeline, _smtc, settings);
