@@ -319,6 +319,8 @@ public sealed class SmtcNowPlayingSource : INowPlayingSource
         return status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
     }
 
+    // CsWinRT 2.2 (WindowsSdkPackageVersion 10.0.22621.57) projects
+    // Windows.Foundation.DateTime as DateTimeOffset, not System.DateTime.
     private static DateTimeOffset? ToTimestamp(DateTimeOffset value)
     {
         if (value == default || value.Year < 2000)
