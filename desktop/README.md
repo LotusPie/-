@@ -37,12 +37,13 @@
 
 ## 怎麼建
 
-在 **Windows** 上，先 `git pull`，再於 **`desktop` 資料夾**重編（不要在 repo 根目錄建；csproj 在 `desktop\` 底下）。
+在 **Windows** 上，先 `git pull`，再於 **`desktop` 資料夾**重編（不要在 repo 根目錄建；csproj 在 `desktop\` 底下）。不必另外安裝 Visual Studio 的 Windows 10 SDK 22621：C# 目標套件從 NuGet 來。
 
 PowerShell（以本機路徑為例）：
 
 ```powershell
 Set-Location D:\tool\lyrics-translator\desktop
+git pull
 dotnet restore .\LyricsTranslator.sln
 dotnet test .\tests\LyricsTranslator.Core.Tests\LyricsTranslator.Core.Tests.csproj
 dotnet build .\src\LyricsTranslator.App\LyricsTranslator.App.csproj -c Release -p:Platform=x64

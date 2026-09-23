@@ -3,8 +3,12 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <!-- Targeting pack comes from NuGet (Microsoft.Windows.SDK.NET.Ref); a locally installed 10.0.19041 Windows SDK is not required. -->
-    <WindowsSdkPackageVersion>10.0.22621.38</WindowsSdkPackageVersion>
+    <!--
+      NuGet targeting pack (no local Windows SDK install required).
+      10.0.22621.38 ships WinRT.Runtime 2.1 and CS1705s against WASDK 1.6 / H.NotifyIcon (2.2).
+      .57 is the net8 pack with WinRT.Runtime 2.2.0.0.
+    -->
+    <WindowsSdkPackageVersion>10.0.22621.57</WindowsSdkPackageVersion>
     <RootNamespace>LyricsTranslator</RootNamespace>
     <AssemblyName>LyricsTranslator</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
