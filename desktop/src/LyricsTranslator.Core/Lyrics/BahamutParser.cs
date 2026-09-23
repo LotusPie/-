@@ -48,13 +48,18 @@ public static partial class BahamutParser
 
     public static IReadOnlyList<string> BuildSearchQueries(TrackQuery query)
     {
-        var title = query.DisplayTitle.Trim();
-        var artist = query.DisplayArtist.Trim();
-        var titles = TitleAliases.Variants(title);
-        var artists = ArtistAliases.Variants(artist);
+        var titles = TrackLookup.Titles(query);
+        var artists = TrackLookup.Artists(query);
         var queries = new List<string>();
+        if (titles.Count == 0)
+        {
+            return queries;
+        }
 
-        // Person-like SMTC / Apple Music strings first: "Sunny 歌詞", "Sunny Yorushika 歌詞翻譯".
+        var title = titles[0];
+        var artist = artists.Count > 0 ? artists[0] : string.Empty;
+
+        // Native script first (花一匁, 晴る, ヨルシカ) — do not lead with Apple Music romaji.
         TryAdd(queries, title);
         foreach (var suffix in LyricQuerySuffixes)
         {
@@ -68,13 +73,8 @@ public static partial class BahamutParser
             TryAdd(queries, $"{title} {artist} 歌詞翻譯");
         }
 
-        foreach (var aliasTitle in titles)
+        foreach (var aliasTitle in titles.Skip(1))
         {
-            if (string.Equals(aliasTitle, title, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
             TryAdd(queries, aliasTitle);
             TryAdd(queries, $"{aliasTitle} 歌詞");
             TryAdd(queries, $"{aliasTitle} 歌詞翻譯");
@@ -85,14 +85,8 @@ public static partial class BahamutParser
             }
         }
 
-        foreach (var aliasArtist in artists)
+        foreach (var aliasArtist in artists.Skip(1))
         {
-            if (artist.Length == 0 ||
-                string.Equals(aliasArtist, artist, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
             TryAdd(queries, $"{title} {aliasArtist}");
             TryAdd(queries, $"{title} {aliasArtist} 歌詞");
             TryAdd(queries, $"{title} {aliasArtist} 歌詞翻譯");
@@ -109,10 +103,11 @@ public static partial class BahamutParser
 
     public static string PreferredKeyword(TrackQuery query)
     {
-        var artist = query.DisplayArtist.Trim();
+        var title = TrackLookup.PrimaryTitle(query);
+        var artist = TrackLookup.PrimaryArtist(query).Trim();
         return artist.Length > 0
-            ? $"{query.DisplayTitle.Trim()} {artist} 歌詞翻譯"
-            : $"{query.DisplayTitle.Trim()} 歌詞翻譯";
+            ? $"{title} {artist} 歌詞翻譯"
+            : $"{title} 歌詞翻譯";
     }
 
     public static IReadOnlyList<BahamutSearchHit> ParseSearchHits(string html)
@@ -149,7 +144,7 @@ public static partial class BahamutParser
         }
 
         var compactHit = CompactForMatch(title);
-        var titleVariants = TitleAliases.Variants(query.DisplayTitle)
+        var titleVariants = TrackLookup.Titles(query)
             .Select(CompactForMatch)
             .Where(static compact => compact.Length >= 2)
             .Distinct(StringComparer.Ordinal)
@@ -161,7 +156,7 @@ public static partial class BahamutParser
 
         var compactTitle = CompactForMatch(query.DisplayTitle);
         var compactArtist = CompactForMatch(query.DisplayArtist);
-        var artistMatched = ArtistAliases.Variants(query.DisplayArtist)
+        var artistMatched = TrackLookup.Artists(query)
             .Select(CompactForMatch)
             .Any(compact => compact.Length >= 2 && compactHit.Contains(compact, StringComparison.Ordinal));
 
@@ -201,18 +196,24 @@ public static partial class BahamutParser
 
     public static string ExtractArticleText(string html)
     {
-        var start = html.IndexOf("id=\"article_content\"", StringComparison.OrdinalIgnoreCase);
-        var slice = start >= 0 ? html[start..] : html;
-        var end = IndexOfAny(slice, "id=\"commentRow\"", "dynamic-reply", "作者相關創作", "相關創作");
-        if (end > 0)
-        {
-            slice = slice[..end];
-        }
-
+        var slice = SliceArticle(html);
         slice = ScriptRegex().Replace(slice, string.Empty);
+        slice = StyleRegex().Replace(slice, string.Empty);
         slice = BrRegex().Replace(slice, "\n");
         slice = TagRegex().Replace(slice, string.Empty);
         return HtmlDecode(slice);
+    }
+
+    public static string? ExtractNativeTitle(string? hitTitle) =>
+        TrackLookup.FirstNativePhrase(hitTitle, NativeTitleJunk);
+
+    public static string? ExtractNativeArtist(string? hitTitle)
+    {
+        var title = ExtractNativeTitle(hitTitle);
+        var runs = TrackLookup.NativeSegments(hitTitle);
+        return runs.FirstOrDefault(run =>
+            !NativeTitleJunk.Any(junk => run.Contains(junk, StringComparison.Ordinal)) &&
+            !string.Equals(run, title, StringComparison.Ordinal));
     }
 
     public static string? ExtractTraditionalChineseLyrics(string articleText)
@@ -227,8 +228,18 @@ public static partial class BahamutParser
         var chinese = new List<string>();
         foreach (var line in lines)
         {
+            if (IsChromeOrNote(line))
+            {
+                continue;
+            }
+
             var extracted = ExtractChineseFromLine(line);
-            if (string.IsNullOrWhiteSpace(extracted) || IsMetaLine(extracted))
+            if (string.IsNullOrWhiteSpace(extracted) || IsChromeOrNote(extracted))
+            {
+                continue;
+            }
+
+            if (chinese.Count > 0 && string.Equals(chinese[^1], extracted, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -273,6 +284,75 @@ public static partial class BahamutParser
 
     public static LyricsSource SourceFromSite(string siteLabel) =>
         string.Equals(siteLabel, "巴哈姆特", StringComparison.Ordinal) ? LyricsSource.Bahamut : LyricsSource.Web;
+
+    public static bool IsChromeOrNote(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return true;
+        }
+
+        var text = line.Trim();
+        if (text.Contains("上一篇", StringComparison.Ordinal) ||
+            text.Contains("下一篇", StringComparison.Ordinal) ||
+            text.Contains("留言", StringComparison.Ordinal) ||
+            text.Contains("article_content", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("text-paragraph", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("article_container", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("id=\"", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("class=\"", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("https://", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("b23.tv", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("中文翻譯來源", StringComparison.Ordinal) ||
+            text.Contains("翻譯來源", StringComparison.Ordinal) ||
+            text.Contains("不是我翻譯", StringComparison.Ordinal) ||
+            text.Contains("只是把中日", StringComparison.Ordinal) ||
+            text.Contains("整理起來", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return IsMetaLine(text);
+    }
+
+    private static readonly string[] NativeTitleJunk =
+    [
+        "中日歌詞", "中韓歌詞", "中英歌詞", "中文歌詞", "歌詞翻譯", "中文翻譯",
+        "全曲翻譯", "巴哈姆特", "創作大廳", "歌詞中文翻譯",
+    ];
+
+    private static readonly string[] ArticleEndNeedles =
+    [
+        "id=\"commentRow\"",
+        "dynamic-reply",
+        "作者相關創作",
+        "相關創作",
+        "ct-btn-box",
+        "tags-container",
+        "sticky-bottom",
+        "id=\"replys\"",
+        "上一篇",
+        "下一篇",
+    ];
+
+    private static string SliceArticle(string html)
+    {
+        var attr = html.IndexOf("id=\"article_content\"", StringComparison.OrdinalIgnoreCase);
+        string slice;
+        if (attr >= 0)
+        {
+            var gt = html.IndexOf('>', attr);
+            slice = gt >= 0 ? html[(gt + 1)..] : html[attr..];
+        }
+        else
+        {
+            slice = html;
+        }
+
+        var end = IndexOfAny(slice, ArticleEndNeedles);
+        return end > 0 ? slice[..end] : slice;
+    }
 
     private static void TryAdd(List<string> queries, string value)
     {
@@ -400,9 +480,26 @@ public static partial class BahamutParser
         line.Contains("請見諒", StringComparison.Ordinal) ||
         line.Contains("轉載", StringComparison.Ordinal) ||
         line.Contains("繼續閱讀", StringComparison.Ordinal) ||
-        line.Contains("作者相關", StringComparison.Ordinal);
+        line.Contains("作者相關", StringComparison.Ordinal) ||
+        line.Contains("來源：", StringComparison.Ordinal) ||
+        line.Contains("來源:", StringComparison.Ordinal);
 
     private static int IndexOfAny(string text, params string[] needles)
+    {
+        var best = -1;
+        foreach (var needle in needles)
+        {
+            var found = text.IndexOf(needle, StringComparison.OrdinalIgnoreCase);
+            if (found >= 0 && (best < 0 || found < best))
+            {
+                best = found;
+            }
+        }
+
+        return best;
+    }
+
+    private static int IndexOfAny(string text, IReadOnlyList<string> needles)
     {
         var best = -1;
         foreach (var needle in needles)
@@ -442,6 +539,9 @@ public static partial class BahamutParser
 
     [GeneratedRegex(@"<script[\s\S]*?</script>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ScriptRegex();
+
+    [GeneratedRegex(@"<style[\s\S]*?</style>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex StyleRegex();
 
     [GeneratedRegex(@"<br\s*/?>|</p>|</div>|</li>|<li[^>]*>|</h[1-6]>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BrRegex();

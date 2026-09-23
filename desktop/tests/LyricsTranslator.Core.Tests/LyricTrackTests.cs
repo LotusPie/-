@@ -86,4 +86,21 @@ public class LyricTrackTests
         var lines = LyricTrack.Build("one\ntwo", "一\n二", syncedLrc: null);
         Assert.Equal(0, LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(40)));
     }
+
+    [Fact]
+    public void Drops_bahamut_chrome_from_overlay_translation_lines()
+    {
+        var lines = LyricTrack.Build(
+            "a\nb\nc\nd",
+            "你就像微風一般\n上一篇\n下一篇\n留言\nid=\"article_content\" class=\"text-paragraph article_container\">\n中文翻譯來源：http://b23.tv/ZCxGRfk\n闔上雙眼染上暮色\n究竟你內心在想甚麼呢\n你睜開的眼臉底下",
+            "[00:00.00] a\n[00:10.00] b\n[00:20.00] c\n[00:30.00] d");
+
+        Assert.Equal(4, lines.Count);
+        Assert.Equal("你就像微風一般", lines[0].Translation);
+        Assert.Equal("闔上雙眼染上暮色", lines[1].Translation);
+        Assert.DoesNotContain(lines, l => l.Translation.Contains("上一篇", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, l => l.Translation.Contains("留言", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, l => l.Translation.Contains("article_content", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, l => l.Translation.Contains("b23.tv", StringComparison.OrdinalIgnoreCase));
+    }
 }

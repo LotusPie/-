@@ -85,9 +85,9 @@ Visual Studio：開啟 `desktop\LyricsTranslator.sln`，將 `LyricsTranslator.Ap
 | 步驟 | 行為 |
 | --- | --- |
 | 1 | 本機 SQLite **社群**快取（巴哈／網頁譯詞）。舊的 **AI 快取不是終點**：下一首播放會再查巴哈／網頁，命中就換掉 AI |
-| 2 | [巴哈姆特創作大廳](https://home.gamer.com.tw/)：用人會打的關鍵字搜（`Sunny 歌詞`、`晴る 歌詞`、`Sunny Yorushika 歌詞翻譯`、`Sunny 中日歌詞`），含羅馬拼音與日文別名（Sunny↔晴る、Yorushika↔ヨルシカ）。**不限日文假名**。命中標「巴哈姆特」，**不呼叫 AI** |
+| 2 | [巴哈姆特創作大廳](https://home.gamer.com.tw/)：用**畫面上的原文脚本**搜（日文歌名用 花一匁／晴る，不是 Hanaichi Monnme）。Apple Music 只有羅馬拼音時，用別名或巴哈／LRCLIB 標題找回日文再搜。命中標「巴哈姆特」，**不呼叫 AI**。剖析時丢掉上一篇／下一篇／留言／翻譯來源 URL／HTML 屬性 |
 | 3 | 巴哈沒找到時，用網頁搜尋（title + 歌詞翻譯）只跟公開歌詞頁（巴哈、Mojim），標站名 |
-| 4 | [LRCLIB](https://lrclib.net/docs) 只取**原文**與 **synced LRC**（不是繁中譯詞） |
+| 4 | [LRCLIB](https://lrclib.net/docs) 用**日文歌名／歌手**查原文 + synced LRC（`/api/get` 帶時長，失敗再 `search?q=`）。選標題對得上日文原題、時長接近、且有 LRC 的那一筆。不發明時間軸 |
 | 5 | 若原文已是繁中，直接顯示，不呼叫 AI |
 | 6 | **最後才**用你的金鑰依整曲意境翻成台灣繁體（標「AI」） |
 | 7 | 沒有原文也沒有社群譯詞：請手貼，禁止模型憑歌名瞎寫 |

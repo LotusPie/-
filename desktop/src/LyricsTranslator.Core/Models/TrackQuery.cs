@@ -10,8 +10,16 @@ public sealed record TrackQuery(
     string CacheKey,
     string? SourceAppId,
     PlayerKind PlayerKind,
-    bool IsPlaying)
+    bool IsPlaying,
+    string? RecoveredTitle = null,
+    string? RecoveredArtist = null)
 {
     public bool HasIdentity =>
         !string.IsNullOrWhiteSpace(NormalizedTitle);
+
+    public TrackQuery WithRecovered(string? title, string? artist) => this with
+    {
+        RecoveredTitle = string.IsNullOrWhiteSpace(title) ? RecoveredTitle : title.Trim(),
+        RecoveredArtist = string.IsNullOrWhiteSpace(artist) ? RecoveredArtist : artist.Trim(),
+    };
 }

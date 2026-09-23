@@ -151,7 +151,9 @@ public class BahamutClientTests
         Assert.Contains("你就像微風一般", hit.Translation);
         Assert.Contains("闔上雙眼染上暮色", hit.Translation);
         Assert.DoesNotContain("貴方は", hit.Translation, StringComparison.Ordinal);
-        Assert.True(RequestedContains(handler.Requested, "Sunny 歌詞"));
+        Assert.True(
+            RequestedContains(handler.Requested, "晴る") ||
+            RequestedContains(handler.Requested, "Sunny"));
         Assert.Contains("5859521", handler.Requested, StringComparison.Ordinal);
         Assert.True(
             RequestedContains(handler.Requested, "中日歌詞") ||

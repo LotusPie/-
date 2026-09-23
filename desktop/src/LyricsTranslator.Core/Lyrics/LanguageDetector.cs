@@ -28,6 +28,24 @@ public static class LanguageDetector
 
     public static bool HasHan(string text) => text.Any(IsHan);
 
+    /// <summary>
+    /// True for kana and for kanji-only Japanese titles such as 花一匁 (no kana required).
+    /// </summary>
+    public static bool LooksLikeJapaneseOrKanjiTitle(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || LooksLikeKorean(text))
+        {
+            return false;
+        }
+
+        if (LooksLikeJapanese(text))
+        {
+            return true;
+        }
+
+        return HasHan(text) && !LooksLikeAlreadyTaiwanMandarinLyrics(text);
+    }
+
     public static bool LooksLikeJapanese(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))

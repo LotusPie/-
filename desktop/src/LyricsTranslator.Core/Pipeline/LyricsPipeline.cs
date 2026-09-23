@@ -72,6 +72,13 @@ public sealed class LyricsPipeline
 
         // Community scrape BEFORE any LLM, even if an old AI row is in SQLite.
         var community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
+        if (community is not null)
+        {
+            query = query.WithRecovered(
+                BahamutParser.ExtractNativeTitle(community.SourceTitle),
+                BahamutParser.ExtractNativeArtist(community.SourceTitle));
+        }
+
         string? translation = community?.Translation;
         var translationSource = community is null ? LyricsSource.None : BahamutParser.SourceFromSite(community.SiteLabel);
 
@@ -94,6 +101,18 @@ public sealed class LyricsPipeline
             if (hit is not null)
             {
                 lrclibId = hit.Id;
+                query = query.WithRecovered(hit.TrackName, hit.ArtistName);
+                if (community is null &&
+                    LanguageDetector.LooksLikeJapaneseOrKanjiTitle(hit.TrackName))
+                {
+                    community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
+                    if (community is not null)
+                    {
+                        translation = community.Translation;
+                        translationSource = BahamutParser.SourceFromSite(community.SiteLabel);
+                    }
+                }
+
                 if (string.IsNullOrWhiteSpace(syncedLyrics) && !string.IsNullOrWhiteSpace(hit.SyncedLyrics))
                 {
                     syncedLyrics = hit.SyncedLyrics;

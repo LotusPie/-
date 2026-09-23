@@ -9,6 +9,7 @@ public static class TitleAliases
     private static readonly string[][] Groups =
     [
         ["Sunny", "晴る"],
+        ["花一匁", "Hanaichi Monnme", "Hanaichi Monme", "Hanaichimonme"],
     ];
 
     public static IReadOnlyList<string> Variants(string title)

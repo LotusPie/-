@@ -12,6 +12,7 @@ public sealed partial class LrclibClient : ILrclibClient
     public const int DurationToleranceSeconds = 5;
 
     private static readonly Uri SearchUri = new("https://lrclib.net/api/search");
+    private static readonly Uri GetUri = new("https://lrclib.net/api/get");
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -49,29 +50,128 @@ public sealed partial class LrclibClient : ILrclibClient
 
     public async Task<IReadOnlyList<LrclibTrack>> SearchAsync(TrackQuery query, CancellationToken cancellationToken)
     {
-        var url = BuildSearchUrl(query);
-        using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        var merged = new Dictionary<long, LrclibTrack>();
+        var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var url in BuildLookupUrls(query))
         {
-            return [];
+            if (!seenUrls.Add(url.AbsoluteUri))
+            {
+                continue;
+            }
+
+            IReadOnlyList<LrclibTrack> batch;
+            try
+            {
+                batch = await FetchAsync(url, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException)
+            {
+                continue;
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            foreach (var track in batch)
+            {
+                if (track.Id != 0)
+                {
+                    merged[track.Id] = track;
+                }
+                else
+                {
+                    merged[merged.Count + 1] = track;
+                }
+            }
+
+            if (merged.Values.Any(t =>
+                    !string.IsNullOrWhiteSpace(t.SyncedLyrics) &&
+                    Score(t, query) >= 200))
+            {
+                break;
+            }
         }
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var tracks = await JsonSerializer.DeserializeAsync<List<LrclibTrack>>(stream, JsonOptions, cancellationToken)
-            .ConfigureAwait(false);
-        return tracks ?? [];
+        return merged.Values.ToList();
     }
 
     public static Uri BuildSearchUrl(TrackQuery query)
     {
+        var title = TrackLookup.PrimaryTitle(query);
+        var artist = TrackLookup.PrimaryArtist(query);
         var builder = new UriBuilder(SearchUri)
         {
-            Query = $"track_name={Uri.EscapeDataString(query.DisplayTitle)}" +
-                    (string.IsNullOrWhiteSpace(query.DisplayArtist)
+            Query = $"track_name={Uri.EscapeDataString(title)}" +
+                    (string.IsNullOrWhiteSpace(artist)
                         ? string.Empty
-                        : $"&artist_name={Uri.EscapeDataString(query.DisplayArtist)}"),
+                        : $"&artist_name={Uri.EscapeDataString(artist)}"),
         };
         return builder.Uri;
+    }
+
+    public static Uri BuildGetUrl(TrackQuery query)
+    {
+        var title = TrackLookup.PrimaryTitle(query);
+        var artist = TrackLookup.PrimaryArtist(query);
+        var parts = new List<string>
+        {
+            "track_name=" + Uri.EscapeDataString(title),
+        };
+        if (!string.IsNullOrWhiteSpace(artist))
+        {
+            parts.Add("artist_name=" + Uri.EscapeDataString(artist));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Album))
+        {
+            parts.Add("album_name=" + Uri.EscapeDataString(query.Album));
+        }
+
+        if (query.Duration is { TotalSeconds: > 0 } duration)
+        {
+            parts.Add("duration=" + Math.Round(duration.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        return new UriBuilder(GetUri) { Query = string.Join('&', parts) }.Uri;
+    }
+
+    public static IReadOnlyList<Uri> BuildLookupUrls(TrackQuery query)
+    {
+        var urls = new List<Uri>();
+        var titles = TrackLookup.Titles(query);
+        var artists = TrackLookup.Artists(query);
+        var primaryArtist = artists.FirstOrDefault() ?? string.Empty;
+
+        void Add(Uri uri)
+        {
+            if (urls.All(existing => !string.Equals(existing.AbsoluteUri, uri.AbsoluteUri, StringComparison.OrdinalIgnoreCase)))
+            {
+                urls.Add(uri);
+            }
+        }
+
+        if (query.Duration is { TotalSeconds: > 0 })
+        {
+            Add(BuildGetUrl(query));
+        }
+
+        Add(BuildSearchUrl(query));
+
+        foreach (var title in titles.Take(3))
+        {
+            Add(new UriBuilder(SearchUri) { Query = "q=" + Uri.EscapeDataString(title) }.Uri);
+            if (primaryArtist.Length > 0)
+            {
+                Add(new UriBuilder(SearchUri)
+                {
+                    Query = "track_name=" + Uri.EscapeDataString(title) +
+                            "&artist_name=" + Uri.EscapeDataString(primaryArtist),
+                }.Uri);
+            }
+        }
+
+        return urls.Take(6).ToList();
     }
 
     public static IEnumerable<LrclibTrack> Rank(IEnumerable<LrclibTrack> tracks, TrackQuery query)
@@ -88,19 +188,38 @@ public sealed partial class LrclibClient : ILrclibClient
         var title = TrackNormalizer.NormalizeToken(TrackNormalizer.StripTitleNoise(track.TrackName ?? string.Empty));
         var artist = TrackNormalizer.NormalizeToken(TrackNormalizer.StripArtistNoise(track.ArtistName ?? string.Empty));
         artist = ArtistAliases.Canonicalize(artist);
+        var titleVariants = TrackLookup.Titles(query)
+            .Select(value => TrackNormalizer.NormalizeToken(TrackNormalizer.StripTitleNoise(value)))
+            .Where(static value => value.Length >= 1)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var artistVariants = TrackLookup.Artists(query)
+            .Select(value => ArtistAliases.Canonicalize(TrackNormalizer.NormalizeToken(TrackNormalizer.StripArtistNoise(value))))
+            .Where(static value => value.Length >= 1)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
-        if (title.Length == 0)
+        if (title.Length == 0 || titleVariants.Count == 0)
         {
             return 0;
         }
 
+        var nativeTitleExpected = TrackLookup.Titles(query)
+            .Any(LanguageDetector.LooksLikeJapaneseOrKanjiTitle);
+        var trackTitleIsNative = LanguageDetector.LooksLikeJapaneseOrKanjiTitle(track.TrackName);
+
         var score = 0;
-        if (title == query.NormalizedTitle)
+        if (titleVariants.Any(variant => title == variant))
         {
             score += 100;
+            if (trackTitleIsNative)
+            {
+                score += 40;
+            }
         }
-        else if (title.Contains(query.NormalizedTitle, StringComparison.Ordinal) ||
-                 query.NormalizedTitle.Contains(title, StringComparison.Ordinal))
+        else if (titleVariants.Any(variant =>
+                     title.Contains(variant, StringComparison.Ordinal) ||
+                     variant.Contains(title, StringComparison.Ordinal)))
         {
             score += 40;
         }
@@ -109,32 +228,48 @@ public sealed partial class LrclibClient : ILrclibClient
             return 0;
         }
 
-        if (!string.IsNullOrEmpty(query.NormalizedArtist) && artist == query.NormalizedArtist)
+        var artistExact = artistVariants.Count > 0 && artistVariants.Any(variant => artist == variant);
+        var artistPartial = artistVariants.Count > 0 &&
+                            artistVariants.Any(variant =>
+                                artist.Contains(variant, StringComparison.Ordinal) ||
+                                variant.Contains(artist, StringComparison.Ordinal));
+        if (artistExact)
         {
             score += 80;
         }
-        else if (!string.IsNullOrEmpty(query.NormalizedArtist) &&
-                 (artist.Contains(query.NormalizedArtist, StringComparison.Ordinal) ||
-                  query.NormalizedArtist.Contains(artist, StringComparison.Ordinal)))
+        else if (artistPartial)
         {
             score += 30;
         }
 
-        if (query.Duration is { } duration && track.Duration > 0)
+        var durationDelta = query.Duration is { } duration && track.Duration > 0
+            ? Math.Abs(duration.TotalSeconds - track.Duration)
+            : (double?)null;
+        if (durationDelta is { } delta)
         {
-            var delta = Math.Abs(duration.TotalSeconds - track.Duration);
             if (delta <= 2)
             {
-                score += 25;
+                score += 40;
             }
             else if (delta <= DurationToleranceSeconds)
             {
-                score += 10;
+                score += 20;
             }
             else
             {
                 score -= 20;
             }
+        }
+
+        if (nativeTitleExpected && !trackTitleIsNative)
+        {
+            var durationOk = durationDelta is { } d && d <= DurationToleranceSeconds;
+            if (!artistExact || !durationOk)
+            {
+                return 0;
+            }
+
+            score -= 50;
         }
 
         if (!string.IsNullOrWhiteSpace(track.EffectivePlainLyrics))
@@ -144,7 +279,7 @@ public sealed partial class LrclibClient : ILrclibClient
 
         if (!string.IsNullOrWhiteSpace(track.SyncedLyrics))
         {
-            score += 15;
+            score += 35;
         }
 
         return score;
@@ -162,6 +297,30 @@ public sealed partial class LrclibClient : ILrclibClient
             .Split('\n')
             .Select(static line => line.TrimEnd());
         return string.Join('\n', lines).Trim();
+    }
+
+    private async Task<IReadOnlyList<LrclibTrack>> FetchAsync(Uri url, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            return [];
+        }
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        var trimmed = json.TrimStart();
+        if (trimmed.StartsWith("[", StringComparison.Ordinal))
+        {
+            return JsonSerializer.Deserialize<List<LrclibTrack>>(json, JsonOptions) ?? [];
+        }
+
+        var one = JsonSerializer.Deserialize<LrclibTrack>(json, JsonOptions);
+        return one is null ? [] : [one];
     }
 
     [GeneratedRegex(@"\[(?:\d{1,2}:)?\d{1,2}:\d{2}(?:\.\d{1,3})?\]", RegexOptions.CultureInvariant)]

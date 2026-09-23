@@ -11,8 +11,8 @@ public static class LyricTrack
         var timedOriginal = LrcParser.Parse(syncedLrc);
         var originalLines = timedOriginal.Count > 0
             ? timedOriginal.Select(l => l.Text).ToList()
-            : Split(original);
-        var translationLines = Split(translation);
+            : Split(original).Where(static l => !BahamutParser.IsChromeOrNote(l)).ToList();
+        var translationLines = Split(translation).Where(static l => !BahamutParser.IsChromeOrNote(l)).ToList();
         var displayCount = translationLines.Count > 0
             ? translationLines.Count
             : timedOriginal.Count > 0

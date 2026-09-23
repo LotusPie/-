@@ -34,14 +34,35 @@ public class BahamutParserTests
     [Fact]
     public void Build_search_queries_for_english_apple_title_include_native_aliases()
     {
-        var queries = BahamutParser.BuildSearchQueries(AppleSunny());
+        var queries = BahamutParser.BuildSearchQueries(AppleSunny()).ToList();
         Assert.Contains("Sunny 歌詞", queries);
         Assert.Contains("晴る 歌詞", queries);
-        Assert.Contains("Sunny Yorushika 歌詞翻譯", queries);
+        Assert.Contains("晴る ヨルシカ 歌詞翻譯", queries);
         Assert.Contains("Sunny 中日歌詞", queries);
         Assert.Contains("Sunny", queries);
         Assert.True(queries.Count <= BahamutParser.MaxSearchQueries);
         Assert.Contains(queries, q => q.Contains("ヨルシカ", StringComparison.Ordinal));
+        Assert.True(
+            queries.FindIndex(q => q.Contains("晴る", StringComparison.Ordinal)) >= 0 &&
+            queries.FindIndex(q => q.Contains("晴る", StringComparison.Ordinal)) <=
+            queries.FindIndex(q => q.Contains("Sunny", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Prefers_japanese_hanaichi_over_apple_music_romaji()
+    {
+        var fromJapanese = BahamutParser.BuildSearchQueries(Song("花一匁", "BURNOUT SYNDROMES"));
+        Assert.Equal("花一匁", fromJapanese[0]);
+        Assert.Contains("花一匁 歌詞", fromJapanese);
+        Assert.True(fromJapanese.Take(6).All(q => !q.Contains("Hanaichi", StringComparison.OrdinalIgnoreCase)));
+
+        var fromRomaji = BahamutParser.BuildSearchQueries(Song("Hanaichi Monnme", "BURNOUT SYNDROMES")).ToList();
+        Assert.Equal("花一匁", fromRomaji[0]);
+        Assert.Contains("花一匁 歌詞", fromRomaji);
+        var nativeAt = fromRomaji.FindIndex(q => q.Contains("花一匁", StringComparison.Ordinal));
+        var romajiAt = fromRomaji.FindIndex(q => q.Contains("Hanaichi", StringComparison.OrdinalIgnoreCase));
+        Assert.True(nativeAt >= 0);
+        Assert.True(romajiAt < 0 || nativeAt < romajiAt);
     }
 
     [Fact]
@@ -207,6 +228,49 @@ public class BahamutParserTests
         Assert.DoesNotContain("目を閉じて", lyrics, StringComparison.Ordinal);
         Assert.DoesNotContain("歌詞翻譯", lyrics, StringComparison.Ordinal);
         Assert.DoesNotContain("作詞", lyrics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Parser_rejects_page_chrome_translator_notes_and_html_residue()
+    {
+        const string html =
+            """
+            <div id="article_content" class="text-paragraph article_container">
+            中文不是我翻譯的 只是把中日羅的歌詞整理起來而已<br>
+            中文翻譯來源：http://b23.tv/ZCxGRfk<br>
+            貴方は風のように<br>
+            你就像微風一般<br>
+            目を閉じては夕暮れ<br>
+            闔上雙眼染上暮色<br>
+            何を思っているんだろうか<br>
+            究竟你內心在想甚麼呢<br>
+            目蓋を開いていた<br>
+            你睜開的眼臉底下<br>
+            「でも、きっと幻？」<br>
+            <div class="ct-btn-box"><a>上一篇</a><a>下一篇</a></div>
+            <a>留言</a>
+            </div>
+            """;
+        var text = BahamutParser.ExtractArticleText(html);
+        Assert.DoesNotContain("article_content", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("text-paragraph", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("上一篇", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("下一篇", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("留言", text, StringComparison.Ordinal);
+
+        var lyrics = BahamutParser.ExtractTraditionalChineseLyrics(text);
+        Assert.NotNull(lyrics);
+        Assert.Contains("你就像微風一般", lyrics);
+        Assert.Contains("闔上雙眼染上暮色", lyrics);
+        Assert.DoesNotContain("上一篇", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("下一篇", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("留言", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("article_content", lyrics, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("b23.tv", lyrics, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("不是我翻譯", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("整理起來", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("中文翻譯來源", lyrics, StringComparison.Ordinal);
+        Assert.DoesNotContain("http://", lyrics, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

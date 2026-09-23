@@ -36,6 +36,83 @@ public class LrclibRankingTests
     }
 
     [Fact]
+    public void Prefers_japanese_title_duration_and_synced_over_romaji_mismatch()
+    {
+        var query = TrackNormalizer.FromRaw(
+            "Hanaichi Monnme",
+            "BURNOUT SYNDROMES",
+            null,
+            TimeSpan.FromSeconds(275),
+            "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App",
+            PlayerKind.AppleMusic,
+            true);
+        var wrongRomaji = new LrclibTrack
+        {
+            TrackName = "hanaichimonme",
+            ArtistName = "DracoVirgo",
+            Duration = 203,
+            SyncedLyrics = "[00:01.00] wrong",
+            PlainLyrics = "wrong",
+        };
+        var japanese = new LrclibTrack
+        {
+            TrackName = "花一匁",
+            ArtistName = "BURNOUT SYNDROMES",
+            Duration = 275,
+            SyncedLyrics = "[00:01.00] 正しい",
+            PlainLyrics = "正しい",
+        };
+        var japaneseWrongDuration = new LrclibTrack
+        {
+            TrackName = "花一匁",
+            ArtistName = "ずっと真夜中でいいのに。",
+            Duration = 492,
+            SyncedLyrics = "[00:01.00] other",
+            PlainLyrics = "other",
+        };
+
+        var ranked = LrclibClient.Rank([wrongRomaji, japaneseWrongDuration, japanese], query).ToList();
+        Assert.Equal("花一匁", ranked[0].TrackName);
+        Assert.Equal(275.0, ranked[0].Duration);
+        Assert.DoesNotContain(ranked, t => t.ArtistName == "DracoVirgo");
+    }
+
+    [Fact]
+    public void Build_search_url_uses_japanese_title_not_romaji()
+    {
+        var romaji = TrackNormalizer.FromRaw(
+            "Hanaichi Monnme",
+            "BURNOUT SYNDROMES",
+            null,
+            TimeSpan.FromSeconds(275),
+            "AppleMusic",
+            PlayerKind.AppleMusic,
+            true);
+        var japanese = TrackNormalizer.FromRaw(
+            "花一匁",
+            "BURNOUT SYNDROMES",
+            null,
+            TimeSpan.FromSeconds(275),
+            "AppleMusic",
+            PlayerKind.AppleMusic,
+            true);
+
+        var romajiUrl = LrclibClient.BuildSearchUrl(romaji).ToString();
+        var japaneseUrl = LrclibClient.BuildSearchUrl(japanese).ToString();
+        static bool HasJapaneseTitle(string url) =>
+            url.Contains("花一匁", StringComparison.Ordinal) ||
+            url.Contains(Uri.EscapeDataString("花一匁"), StringComparison.Ordinal);
+        Assert.True(HasJapaneseTitle(romajiUrl));
+        Assert.True(HasJapaneseTitle(japaneseUrl));
+        Assert.DoesNotContain("Hanaichi", romajiUrl, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Hanaichi", japaneseUrl, StringComparison.OrdinalIgnoreCase);
+
+        var urls = LrclibClient.BuildLookupUrls(romaji);
+        Assert.Contains(urls, u => u.AbsoluteUri.Contains("api/get", StringComparison.Ordinal));
+        Assert.All(urls.Take(2), u => Assert.True(HasJapaneseTitle(u.AbsoluteUri)));
+    }
+
+    [Fact]
     public void Strips_lrc_timestamps()
     {
         var plain = LrclibClient.StripLrcTimestamps("[00:12.00]hello\n[00:15.50]world");

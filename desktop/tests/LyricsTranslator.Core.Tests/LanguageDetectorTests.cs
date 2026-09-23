@@ -63,6 +63,15 @@ public class LanguageDetectorTests
     }
 
     [Fact]
+    public void Kanji_only_japanese_title_is_japanese_script()
+    {
+        Assert.True(LanguageDetector.LooksLikeJapaneseOrKanjiTitle("花一匁"));
+        Assert.True(LanguageDetector.LooksLikeJapaneseOrKanjiTitle("晴る"));
+        Assert.False(LanguageDetector.LooksLikeJapaneseOrKanjiTitle("Hanaichi Monnme"));
+        Assert.False(LanguageDetector.LooksLikeJapaneseOrKanjiTitle("Hello"));
+    }
+
+    [Fact]
     public void Shared_kanji_without_chinese_grammar_is_not_chinese()
     {
         const string kanjiOnly = "愛\n時\n夢\n夜\n心";

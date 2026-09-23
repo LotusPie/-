@@ -114,5 +114,8 @@ public class TrackNormalizerTests
         Assert.Contains("晴る", TitleAliases.Variants("Sunny"));
         Assert.Contains("ヨルシカ", ArtistAliases.Variants("Yorushika"));
         Assert.Contains("Sunny", TitleAliases.Variants("晴る"));
+        Assert.Contains("花一匁", TitleAliases.Variants("Hanaichi Monnme"));
+        Assert.Equal("花一匁", TrackLookup.PrimaryTitle(
+            TrackNormalizer.FromRaw("Hanaichi Monnme", "BURNOUT SYNDROMES", null, null, "AppleMusic", PlayerKind.AppleMusic, true)));
     }
 }
