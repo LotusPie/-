@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window
+    x:Class="LyricsTranslator.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="設定">
+
+    <ScrollViewer Background="#1B1F2A" Padding="20">
+        <StackPanel Spacing="12" MaxWidth="520">
+            <TextBlock Text="API 金鑰" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="只用你自己的 Claude、OpenAI 或 Gemini（Google AI Studio）金鑰。金鑰以 Windows DPAPI 存在本機，不會打進程式。" Opacity="0.8" TextWrapping="Wrap"/>
+
+            <TextBlock Text="供應商"/>
+            <ComboBox SelectedIndex="{x:Bind ViewModel.ProviderIndex, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="Claude"/>
+                <ComboBoxItem Content="OpenAI"/>
+                <ComboBoxItem Content="Gemini（Google AI Studio 免費額度）"/>
+            </ComboBox>
+
+            <TextBlock Text="API 金鑰"/>
+            <PasswordBox x:Name="ApiKeyBox" PasswordChanged="ApiKeyBox_PasswordChanged"/>
+
+            <TextBlock Text="模型（可留空用預設：Claude 為 claude-sonnet-4-5，OpenAI 為 gpt-4o，Gemini 為 gemini-2.5-flash）"/>
+            <TextBox Text="{x:Bind ViewModel.Model, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+
+            <TextBlock Text="播放來源釘選" Margin="0,12,0,0" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="SMTC 看不到 YouTube Music 的網址。多個瀏覽器分頁時，請釘選來源以免抓錯。" Opacity="0.8" TextWrapping="Wrap"/>
+            <ComboBox SelectedIndex="{x:Bind ViewModel.PlayerPinIndex, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="自動（Apple Music 優先，其次瀏覽器）"/>
+                <ComboBoxItem Content="只跟 Apple Music"/>
+                <ComboBoxItem Content="只跟瀏覽器（YouTube Music）"/>
+            </ComboBox>
+
+            <CheckBox Content="暫停偵測" IsChecked="{x:Bind ViewModel.DetectionPaused, Mode=TwoWay}"/>
+
+            <TextBlock Text="歌詞同步" Margin="0,12,0,0" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Opacity="0.8" TextWrapping="Wrap"
+                       Text="SMTC 進度比實際聲音慢時，用正值讓歌詞往前。可設 -10～+10 秒，預設 0。不會自動猜測偏移。"/>
+            <NumberBox Header="同步偏移（秒）"
+                       Value="{x:Bind ViewModel.SyncOffsetSeconds, Mode=TwoWay}"
+                       Minimum="-10"
+                       Maximum="10"
+                       SmallChange="0.1"
+                       LargeChange="0.5"
+                       SpinButtonPlacementMode="Inline"/>
+
+            <Button Content="儲存" Command="{x:Bind ViewModel.SaveCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+            <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}" Opacity="0.85" TextWrapping="Wrap"/>
+
+            <TextBlock Margin="0,16,0,0" Opacity="0.55" TextWrapping="Wrap"
+                       Text="快取位置：%LOCALAPPDATA%\LyricsTranslator\lyrics.db。設定：同資料夾 settings.json。"/>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

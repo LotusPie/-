@@ -1,0 +1,28 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+AppPackages/
+BundleArtifacts/
+Package.StoreAssociation.xml
+_pkginfo.txt
+TestResults/
+*.nupkg
+*.snupk
+project.lock.json
+artifacts/
+publish/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.swp
+.idea/

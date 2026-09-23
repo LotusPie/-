@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window
+    x:Class="LyricsTranslator.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:tb="using:H.NotifyIcon"
+    mc:Ignorable="d"
+    Title="歌詞翻譯">
+
+    <Grid x:Name="RootGrid" Background="#1B1F2A" Padding="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <tb:TaskbarIcon
+            x:Name="TrayIcon"
+            ToolTipText="歌詞翻譯"
+            IconSource="ms-appx:///Assets/app.ico"
+            ContextFlyout="{x:Bind TrayMenu}"/>
+
+        <Grid Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="{x:Bind ViewModel.Artist, Mode=OneWay}" FontSize="14" Opacity="0.8" Margin="0,4,0,0"/>
+                <TextBlock Text="{x:Bind ViewModel.Album, Mode=OneWay}" FontSize="12" Opacity="0.55" Margin="0,2,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                <Border Background="#2EC4B6" CornerRadius="6" Padding="10,4"
+                        Visibility="{x:Bind NonEmpty(ViewModel.SourceLabel), Mode=OneWay}">
+                    <TextBlock Text="{x:Bind ViewModel.SourceLabel, Mode=OneWay}" FontSize="12" Foreground="#102027"/>
+                </Border>
+                <Button Content="{x:Bind OverlayLabel(ViewModel.OverlayEnabled), Mode=OneWay}"
+                        Command="{x:Bind ViewModel.ToggleOverlayCommand}"/>
+                <Button Content="設定" Click="OpenSettings_Click"/>
+                <Button Content="{x:Bind PauseLabel(ViewModel.DetectionPaused), Mode=OneWay}"
+                        Command="{x:Bind ViewModel.ToggleDetectionCommand}"/>
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="1" Margin="0,10,0,8">
+            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" Opacity="0.85" TextWrapping="Wrap"/>
+            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,4,0,0">
+                <TextBlock Text="{x:Bind ViewModel.SyncCaption, Mode=OneWay}" FontSize="12" Opacity="0.6"
+                           Visibility="{x:Bind NonEmpty(ViewModel.SyncCaption), Mode=OneWay}"/>
+                <TextBlock Text="{x:Bind ViewModel.PositionLabel, Mode=OneWay}" FontSize="12" Opacity="0.6"
+                           Visibility="{x:Bind NonEmpty(ViewModel.PositionLabel), Mode=OneWay}"/>
+            </StackPanel>
+        </StackPanel>
+
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="原文" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <ScrollViewer Grid.Row="1" Background="#12151C" Padding="10">
+                    <TextBlock Text="{x:Bind ViewModel.OriginalLyrics, Mode=OneWay}" TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"/>
+                </ScrollViewer>
+            </Grid>
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="繁中" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <ScrollViewer Grid.Row="1" Background="#12151C" Padding="10">
+                    <TextBlock Text="{x:Bind ViewModel.TranslatedLyrics, Mode=OneWay}" TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"/>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+
+        <StackPanel Grid.Row="3" Margin="0,12,0,0"
+                    Visibility="{x:Bind BoolVis(ViewModel.NeedsPaste), Mode=OneWay}">
+            <TextBlock Text="貼上原文（不會憑空寫歌詞）" Margin="0,0,0,6"/>
+            <TextBox Text="{x:Bind ViewModel.PasteText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True" Height="90" TextWrapping="Wrap"/>
+            <Button Content="用這段原文翻譯" Margin="0,8,0,0" Command="{x:Bind ViewModel.PasteOriginalCommand}"/>
+        </StackPanel>
+
+        <Grid Grid.Row="4" Margin="0,12,0,0"
+              Visibility="{x:Bind BoolVis(ViewModel.CanRetry), Mode=OneWay}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox PlaceholderText="不對味？寫一句指示再生成（可留空，會重抓整曲意境）"
+                     Text="{x:Bind ViewModel.RetryHint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <Button Grid.Column="1" Content="重譯" Margin="8,0,0,0" Command="{x:Bind ViewModel.RetryTranslationCommand}"/>
+        </Grid>
+    </Grid>
+</Window>
