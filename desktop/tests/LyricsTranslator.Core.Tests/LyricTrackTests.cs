@@ -105,6 +105,61 @@ public class LyricTrackTests
     }
 
     [Fact]
+    public void Netease_lrc_mapped_onto_zh_tw_does_not_pin_index_0()
+    {
+        const string netease =
+            """
+            [ti:あぶく]
+            [00:00.000] 作词 : n-buna
+            [00:01.000] 作曲 : n-buna
+            [00:11.641]あぁどうしようもないほどに
+            [00:14.407]私に蠢く獣
+            [00:18.106]水面浮かんで浮かんでは消えるあぶく
+            [00:25.061]
+            [00:29.247]あぁどうしようもなく悲しい
+            [00:31.988]私を動かす獣
+            """;
+        const string zh =
+            """
+            啊啊 無可救藥地 在我心底蠢蠢欲動的野獸
+            接連浮上水面又無疾而終的
+            氣泡
+            啊啊 無可救藥地悲傷
+            驅使我的野獸
+            """;
+
+        var lines = LyricTrack.Build(
+            "あぁどうしようもないほどに\n私に蠢く獣",
+            zh,
+            netease);
+
+        Assert.True(lines.Count >= 5);
+        Assert.Contains(lines, l => l.Timestamp is { } ts && ts > TimeSpan.FromSeconds(11));
+        Assert.Equal(0, LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(5)));
+        Assert.Equal(0, LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(12)));
+        var mid = LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(20));
+        var later = LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(32));
+        Assert.True(mid > 0, "IndexAt must leave line 0 once the playhead passes the second cue");
+        Assert.True(later > mid, "IndexAt must keep advancing as time increases");
+        Assert.True(later >= lines.Count - 1);
+    }
+
+    [Fact]
+    public void IndexAt_moves_as_time_increases_across_lrc_cues()
+    {
+        var lines = LyricTrack.Build(
+            "a\nb\nc\nd",
+            "甲\n乙\n丙\n丁",
+            "[00:00.000] a\n[00:08.500] b\n[00:16.250] c\n[01:02.00] d");
+
+        Assert.Equal(0, LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(0)));
+        Assert.Equal(0, LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(8.4)));
+        Assert.Equal(1, LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(8.5)));
+        Assert.Equal(2, LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(30)));
+        Assert.Equal(3, LyricTrack.IndexAt(lines, TimeSpan.FromSeconds(70)));
+    }
+
+    [Fact]
     public void Drops_translator_preface_from_overlay_translation_lines()
     {
         var lines = LyricTrack.Build(

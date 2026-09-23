@@ -21,7 +21,9 @@ public partial class MainViewModel : ObservableObject
     private TrackQuery? _currentQuery;
     private IReadOnlyList<TimedLyric> _track = [];
     private readonly PlaybackInterpolator _clock = new();
+    private readonly DispatcherQueueTimer _overlayTimer;
     private TimeSpan _position;
+    private TimeSpan? _duration;
     private int _generation;
 
     public MainViewModel(LyricsPipeline pipeline, SettingsStore settings, DispatcherQueue dispatcher)
@@ -31,6 +33,11 @@ public partial class MainViewModel : ObservableObject
         _dispatcher = dispatcher;
         DetectionPaused = settings.Snapshot().DetectionPaused;
         OverlayEnabled = settings.Snapshot().OverlayEnabled;
+        _overlayTimer = dispatcher.CreateTimer();
+        _overlayTimer.Interval = TimeSpan.FromMilliseconds(100);
+        _overlayTimer.IsRepeating = true;
+        _overlayTimer.Tick += (_, _) => TickPlayhead();
+        _overlayTimer.Start();
         Apply(LyricsDisplay.Idle("未偵測到 Apple Music 或瀏覽器裡的 YouTube Music。"));
     }
 
@@ -68,6 +75,7 @@ public partial class MainViewModel : ObservableObject
         {
             CancelInFlight();
             _clock.Reset();
+            _duration = null;
             Publish(LyricsDisplay.Idle("未偵測到 Apple Music 或瀏覽器裡的 YouTube Music。可在設定釘選播放來源，或暫停偵測。"));
             _currentQuery = null;
             _track = [];
@@ -108,16 +116,27 @@ public partial class MainViewModel : ObservableObject
     public void OnProgress(PlaybackProgress progress)
     {
         var now = DateTimeOffset.Now;
-        var interpolated = _clock.Update(progress, now);
         var offset = TimeSpan.FromSeconds(
             AppSettings.ClampSyncOffset(_settings.Snapshot().SyncOffsetSeconds));
-        var position = PlaybackClock.ApplyOffset(interpolated, offset, progress.Duration);
+        var position = PlaybackClock.Playhead(_clock, progress, offset, now);
         _position = position;
-        _dispatcher.TryEnqueue(() =>
-        {
-            PositionLabel = FormatPosition(position, progress.Duration);
-            HighlightCurrentLine();
-        });
+        _duration = progress.Duration;
+        _dispatcher.TryEnqueue(() => ApplyPlayhead(position, progress.Duration));
+    }
+
+    private void TickPlayhead()
+    {
+        var offset = TimeSpan.FromSeconds(
+            AppSettings.ClampSyncOffset(_settings.Snapshot().SyncOffsetSeconds));
+        var position = PlaybackClock.PlayheadNow(_clock, offset, _duration, DateTimeOffset.Now);
+        _position = position;
+        ApplyPlayhead(position, _duration);
+    }
+
+    private void ApplyPlayhead(TimeSpan position, TimeSpan? duration)
+    {
+        PositionLabel = FormatPosition(position, duration);
+        HighlightCurrentLine();
     }
 
     [RelayCommand]
@@ -313,9 +332,9 @@ public partial class MainViewModel : ObservableObject
             LyricLines[i].ApplyWindow(Math.Abs(i - index));
         }
 
+        RebuildOverlaySlice(index);
         if (changed)
         {
-            RebuildOverlaySlice(index);
             CurrentLineChanged?.Invoke(this, index);
         }
     }

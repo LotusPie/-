@@ -59,7 +59,7 @@ public static class LrcLanguageFilter
         return HasTimestamps(joined) ? joined : null;
     }
 
-    private static bool IsCreditLine(string text) =>
+    public static bool IsCreditLine(string text) =>
         text.StartsWith("作詞", StringComparison.Ordinal) ||
         text.StartsWith("作词", StringComparison.Ordinal) ||
         text.StartsWith("作曲", StringComparison.Ordinal) ||

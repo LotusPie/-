@@ -1,3 +1,4 @@
+using LyricsTranslator.Core.Lyrics;
 using LyricsTranslator.Core.NowPlaying;
 
 namespace LyricsTranslator.Core.Tests;
@@ -107,6 +108,44 @@ public class PlaybackInterpolatorTests
             T0.AddMilliseconds(200));
 
         Assert.InRange(afterSeek.TotalMilliseconds, 39_900, 40_100);
+    }
+
+    [Fact]
+    public void Playhead_and_IndexAt_advance_when_smtc_position_is_stale()
+    {
+        var lines = LyricTrack.Build(
+            "a\nb\nc",
+            "甲\n乙\n丙",
+            "[00:10.00] a\n[00:12.00] b\n[00:15.00] c");
+        var clock = new PlaybackInterpolator();
+        var sample = Playing(TimeSpan.FromSeconds(10), T0);
+
+        var start = PlaybackClock.Playhead(clock, sample, TimeSpan.Zero, T0);
+        Assert.Equal(0, LyricTrack.IndexAt(lines, start));
+
+        var later = PlaybackClock.Playhead(
+            clock,
+            Playing(TimeSpan.FromSeconds(10), T0),
+            TimeSpan.Zero,
+            T0.AddSeconds(5));
+        Assert.InRange(later.TotalMilliseconds, 14_900, 15_100);
+        Assert.Equal(2, LyricTrack.IndexAt(lines, later));
+
+        var polled = PlaybackClock.PlayheadNow(clock, TimeSpan.Zero, Duration, T0.AddSeconds(5));
+        Assert.InRange(polled.TotalMilliseconds, 14_900, 15_100);
+        Assert.Equal(2, LyricTrack.IndexAt(lines, polled));
+    }
+
+    [Fact]
+    public void Playhead_applies_user_offset()
+    {
+        var clock = new PlaybackInterpolator();
+        var pos = PlaybackClock.Playhead(
+            clock,
+            Playing(TimeSpan.FromSeconds(10), T0),
+            TimeSpan.FromSeconds(1.5),
+            T0);
+        Assert.InRange(pos.TotalMilliseconds, 11_490, 11_510);
     }
 
     [Fact]

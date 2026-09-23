@@ -30,4 +30,39 @@ public class LrcParserTests
         Assert.Empty(LrcParser.Parse(null));
         Assert.Empty(LrcParser.Parse("just plain lyrics\nno stamps"));
     }
+
+    [Fact]
+    public void Parses_netease_three_decimal_and_colon_fraction_without_pinning_t0()
+    {
+        const string lrc =
+            """
+            [ti:あぶく]
+            [ar:ヨルシカ]
+            [offset:0]
+            [00:00.000] 作词 : n-buna
+            [00:01.000] 作曲 : n-buna
+            [00:11.641]あぁどうしようもないほどに
+            [00:14.407]私に蠢く獣
+            [00:18.106]水面浮かんで浮かんでは消えるあぶく
+            [00:25.061]
+            [00:29.247]あぁどうしようもなく悲しい
+            [01:05.020]想像は少しの泡銭
+            [00:11:64]colon hundredths
+            """;
+
+        var lines = LrcParser.Parse(lrc);
+        Assert.Equal(6, lines.Count);
+        Assert.DoesNotContain(lines, l => l.Text.Contains("作词", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, l => l.Text.Contains("作曲", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Text == "colon hundredths" && l.Timestamp == TimeSpan.FromSeconds(11) + TimeSpan.FromMilliseconds(640));
+        var firstLyric = lines.Single(l => l.Text == "あぁどうしようもないほどに");
+        Assert.Equal(TimeSpan.FromSeconds(11) + TimeSpan.FromMilliseconds(641), firstLyric.Timestamp);
+        Assert.NotEqual(TimeSpan.Zero, firstLyric.Timestamp);
+        Assert.Equal(TimeSpan.FromSeconds(14) + TimeSpan.FromMilliseconds(407), lines.Single(l => l.Text == "私に蠢く獣").Timestamp);
+        Assert.Equal(
+            TimeSpan.FromMinutes(1) + TimeSpan.FromSeconds(5) + TimeSpan.FromMilliseconds(20),
+            lines.Single(l => l.Text == "想像は少しの泡銭").Timestamp);
+        Assert.True(lines.All(l => l.Timestamp > TimeSpan.Zero));
+        Assert.True(lines.DistinctBy(l => l.Timestamp).Count() >= 5);
+    }
 }

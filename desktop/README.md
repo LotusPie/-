@@ -99,7 +99,7 @@ LRCLIB 要求 `User-Agent`；本應用使用 `LyricsTranslator/1.0`。巴哈姆�
 - **Apple Music**：Store App 的 SMTC。會拆 `歌手 — 專輯`，且不盲信 Paused。
 - **YouTube Music**：Chrome / Edge / Firefox 等瀏覽器的 Media Session。SMTC **沒有網址**，無法保證一定是 `music.youtube.com`。請在設定釘選「只跟瀏覽器」或「只跟 Apple Music」。
 - 列舉 `GetSessions()`，不盲信 `GetCurrentSession()`。
-- 歌詞視窗用 SMTC `Position` + `PlaybackRate` + `LastUpdatedTime` 每 ~100ms 內插成播放頭；有 LRC 就把時間戳對到**畫面上的繁中行**（行數不同時依索引把 LRC 時間拉開／收攏）。沒有 LRC **不會**用整首歌等分時長。SMTC 比聲音慢時，到設定調「同步偏移（秒）」，預設 0。
+- 歌詞視窗用 SMTC `Position` + `PlaybackRate` + `LastUpdatedTime` 每 ~100ms 內插成播放頭（浮窗自己也 100ms 刷新，SMTC 位置停住時仍往前走）；網易雲 `[mm:ss.xxx]`／`[mm:ss.ff]` 會正確解析，`IndexAt` 取最後一個 ≤ 播放頭的時間戳。有 LRC 就把時間戳對到**畫面上的繁中行**（行數不同時依索引把 LRC 時間拉開／收攏）。沒有 LRC **不會**用整首歌等分時長。SMTC 比聲音慢時，到設定調「同步偏移（秒）」，預設 0。
 
 ## 授權姿態
 

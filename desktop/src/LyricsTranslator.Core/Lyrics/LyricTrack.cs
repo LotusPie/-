@@ -67,14 +67,16 @@ public static class LyricTrack
             return null;
         }
 
-        if (displayCount <= 1)
+        displayIndex = Math.Clamp(displayIndex, 0, Math.Max(displayCount - 1, 0));
+
+        if (displayCount <= 1 || lrc.Count == 1)
         {
-            return lrc[0].Timestamp;
+            return lrc[Math.Min(displayIndex, lrc.Count - 1)].Timestamp;
         }
 
-        if (lrc.Count == 1)
+        if (lrc.Count == displayCount)
         {
-            return displayIndex == 0 ? lrc[0].Timestamp : null;
+            return lrc[displayIndex].Timestamp;
         }
 
         var src = displayIndex * (lrc.Count - 1) / (double)(displayCount - 1);

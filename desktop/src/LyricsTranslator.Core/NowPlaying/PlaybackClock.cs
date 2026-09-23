@@ -41,6 +41,34 @@ public static class PlaybackClock
         return NonNegative(position + Scale(elapsed, rate));
     }
 
+    /// <summary>
+    /// Playhead = interpolated SMTC sample + user offset. Call on each SMTC tick.
+    /// </summary>
+    public static TimeSpan Playhead(
+        PlaybackInterpolator clock,
+        PlaybackProgress progress,
+        TimeSpan userOffset,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(clock);
+        var interpolated = clock.Update(progress, now);
+        return ApplyOffset(interpolated, userOffset, progress.Duration);
+    }
+
+    /// <summary>
+    /// Continue the last sample at playback rate when SMTC Position is stale.
+    /// Overlay should poll this about every 100ms.
+    /// </summary>
+    public static TimeSpan PlayheadNow(
+        PlaybackInterpolator clock,
+        TimeSpan userOffset,
+        TimeSpan? duration,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(clock);
+        return ApplyOffset(clock.Current(now), userOffset, duration);
+    }
+
     public static TimeSpan ApplyOffset(TimeSpan position, TimeSpan offset, TimeSpan? duration)
     {
         var value = position + offset;
