@@ -1,0 +1,28 @@
+{
+  "name": "on-the-trip",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node server/index.mjs",
+    "dev:client": "vite --config client/vite.config.js",
+    "build": "vite build --config client/vite.config.js",
+    "start": "node server/index.mjs",
+    "test": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@fontsource/noto-sans-tc": "^5.2.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "concurrently": "^9.2.1",
+    "vite": "^6.3.5"
+  }
+}
