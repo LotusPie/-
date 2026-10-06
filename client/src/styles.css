@@ -349,6 +349,127 @@ button.game-choice.score {
   border-left-color: var(--amber);
 }
 
+button.game-choice.dj {
+  min-height: 148px;
+  border-left-color: var(--ink);
+  background: white;
+}
+
+button.game-choice.dj strong {
+  font-size: 2rem;
+  line-height: 1.25;
+}
+
+button.game-choice.minor {
+  min-height: 92px;
+}
+
+button.game-choice.minor strong {
+  font-size: 1.2rem;
+}
+
+.minor-title {
+  margin-top: 8px;
+  font-size: 1.05rem;
+  color: var(--ink-soft);
+}
+
+button.xl {
+  min-height: 76px;
+  font-size: 1.45rem;
+}
+
+button.skip-round {
+  min-height: 64px;
+  background: transparent;
+  border-color: var(--ink-soft);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+.dj-kicker {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.dj-who {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.dj-who strong {
+  color: var(--ink);
+  font-size: 2.4rem;
+  line-height: 1.15;
+}
+
+.song-hero,
+.song-aside {
+  background: white;
+  border-radius: 22px;
+  padding: 18px 16px;
+  border-top: 8px solid var(--ink);
+}
+
+.song-hero {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.song-title,
+.song-aside-title {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.song-title {
+  font-size: clamp(2.6rem, 12vw, 4.2rem);
+}
+
+.song-aside-title {
+  font-size: 1.35rem;
+}
+
+.song-artist {
+  margin: 8px 0 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.rate-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rate-row button {
+  min-height: 76px;
+  padding: 8px 0;
+  font-size: 1.35rem;
+  text-align: center;
+}
+
+.song-input {
+  font-size: 1.45rem;
+  font-weight: 700;
+  min-height: 72px;
+}
+
+.points.neg {
+  background: var(--terra);
+}
+
 .kicker {
   font-size: 0.82rem;
   letter-spacing: 0.08em;

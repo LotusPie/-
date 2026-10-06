@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
+import { DjGame } from "./dj.jsx";
 import { Home, Lobby, PromptGame, Roster, ScoreGame, VibeGame } from "./play.jsx";
 
 async function writeText(text) {
@@ -86,9 +87,11 @@ export default function App() {
   }
 
   const turnId =
-    room?.game?.kind === "prompt" && !room.game.done
-      ? room.game.turnOrder[room.game.turnIndex]
-      : room?.game?.assigneeId || null;
+    room?.game?.kind === "dj"
+      ? room.game.djId
+      : room?.game?.kind === "prompt" && !room.game.done
+        ? room.game.turnOrder[room.game.turnIndex]
+        : room?.game?.assigneeId || null;
   const returning = !room && status === "connecting" && Boolean(loadSession()?.playerId);
   const pending = status === "connecting";
 
@@ -149,6 +152,7 @@ export default function App() {
           onLeave={leave}
         />
       )}
+      {room?.game?.kind === "dj" && <DjGame room={room} youId={youId} act={act} />}
       {room?.game?.kind === "prompt" && <PromptGame room={room} youId={youId} act={act} />}
       {room?.game?.kind === "vibe" && <VibeGame room={room} youId={youId} act={act} />}
       {room?.game?.kind === "score" && <ScoreGame room={room} youId={youId} act={act} />}

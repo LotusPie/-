@@ -1,4 +1,5 @@
 import { promptDeck, vibeDeck, scoreDeck } from "./decks.mjs";
+import { advanceDisconnectedDj, beginDj, handleDjAction } from "./dj.mjs";
 
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
@@ -103,7 +104,12 @@ export function rankingOf(players) {
   });
 }
 
-function addScore(player, delta) {
+function addScore(player, delta, { allowNegative = false } = {}) {
+  if (allowNegative || delta >= 0) {
+    player.score += delta;
+    return delta;
+  }
+  if (player.score <= 0) return 0;
   const next = Math.max(0, player.score + delta);
   const applied = next - player.score;
   player.score = next;
@@ -267,6 +273,7 @@ export function reconcile(room) {
     if (next) game.assigneeId = next.id;
   }
   autoSettle(room);
+  advanceDisconnectedDj(room);
 }
 
 export function joinRoom(room, { nickname, playerId } = {}) {
@@ -352,6 +359,7 @@ function blankGame(kind) {
 }
 
 function start(room, kind) {
+  if (kind === "dj") return beginDj(room);
   if (!["prompt", "vibe", "score"].includes(kind)) return { error: "沒有這個遊戲。" };
   if (!active(room).length) return { error: "現在沒有人在線上。" };
   room.phase = "playing";
@@ -370,6 +378,9 @@ function draw(room, force) {
   }
   if (previous.kind === "score" && previous.card && !previous.result && !force) {
     return { error: "這一輪還沒揭曉。" };
+  }
+  if (!["prompt", "vibe", "score"].includes(previous.kind)) {
+    return { error: "這個遊戲不用抽牌。" };
   }
   const round = (previous.round || 0) + 1;
   if (previous.kind === "prompt") {
@@ -543,6 +554,7 @@ export function applyAction(room, playerId, msg) {
   const name = msg?.name;
   if (name === "start") return start(room, msg.game);
   if (name === "lobby") return lobby(room);
+  if (room.game?.kind === "dj" && name.startsWith("dj")) return handleDjAction(room, playerId, msg);
   if (!room.game) return { error: "現在還在房間裡，先選一個遊戲。" };
   if (name === "draw") return draw(room, Boolean(msg.force));
   if (name === "speak") return speak(room, playerId, msg.note);
@@ -592,6 +604,13 @@ export function serialize(room, viewerId) {
           reactions: game.reactions || [],
           votes,
           result: game.result || null,
+          step: game.step || null,
+          mode: game.mode || null,
+          djId: game.djId || null,
+          song: game.song || null,
+          submissions: game.submissions || [],
+          passedSubmit: game.passedSubmit || [],
+          ratings: game.ratings || {},
         }
       : null,
   };

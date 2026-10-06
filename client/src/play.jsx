@@ -122,7 +122,11 @@ export function Roster({ room, youId, turnId, bumped }) {
               {player.id === room.hostId && <em className="host">房主</em>}
               {!player.connected && <em>離線</em>}
             </span>
-            <strong className={bumped[player.id] ? "points bump" : "points"}>{player.score}</strong>
+            <strong
+              className={`points${bumped[player.id] ? " bump" : ""}${player.score < 0 ? " neg" : ""}`}
+            >
+              {player.score}
+            </strong>
           </li>
         );
       })}
@@ -150,27 +154,33 @@ export function Ranking({ ranking, youId }) {
 
 export function Lobby({ room, youId, onStart, onLeave }) {
   const [leaving, setLeaving] = useState(false);
-  const hasScore = room.players.some((player) => player.score > 0);
+  const hasScore = room.players.some((player) => player.score !== 0);
   return (
     <div className="stack">
       <section className="panel">
-        <h2>今晚想玩什麼？</h2>
-        <p className="hint">誰都可以開一輪。分數會留在這個房間，直到大家散了。</p>
+        <h2>車上主遊戲</h2>
+        <p className="hint">音響自己播。這裡只排誰當迪爵、放大歌名、記分數。駕駛或睡著，誰都可以這輪跳過。</p>
       </section>
-      <button className="game-choice prompt" type="button" onClick={() => onStart("prompt")}>
+      <button className="game-choice dj" type="button" onClick={() => onStart("dj")}>
+        <span className="kicker">乘客玩</span>
+        <strong>如果我是迪爵</strong>
+        <span>輪到你就是本輪迪爵。自行選歌，或讓大家貼進你的歌單。</span>
+      </button>
+      <h2 className="minor-title">也可以玩</h2>
+      <button className="game-choice minor prompt" type="button" onClick={() => onStart("prompt")}>
         <span className="kicker">一起說</span>
         <strong>開話題</strong>
         <span>抽一張旅行提問，輪流回答。說完的人 +1。</span>
       </button>
-      <button className="game-choice vibe" type="button" onClick={() => onStart("vibe")}>
+      <button className="game-choice minor vibe" type="button" onClick={() => onStart("vibe")}>
         <span className="kicker">輕輕一下</span>
         <strong>帶動氣氛</strong>
         <span>一個做得來的小挑戰。不想做可以讓給下一個人。完成 +2。</span>
       </button>
-      <button className="game-choice score" type="button" onClick={() => onStart("score")}>
+      <button className="game-choice minor score" type="button" onClick={() => onStart("score")}>
         <span className="kicker">好玩的分數</span>
         <strong>積分獎懲</strong>
-        <span>投票、小獎勵、請一杯想像中的飲料。分數不會變成負的。</span>
+        <span>投票、小獎勵、請一杯想像中的飲料。這款本身不會把分數扣到負的。</span>
       </button>
       <section className="panel">
         <h2>旅途積分</h2>
