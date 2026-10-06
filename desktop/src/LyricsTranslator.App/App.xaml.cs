@@ -18,7 +18,6 @@ public partial class App : Application
     private SmtcNowPlayingSource? _smtc;
     private HttpClient? _lrclibHttp;
     private HttpClient? _bahamutHttp;
-    private HttpClient? _aiHttp;
 
     public App()
     {
@@ -42,7 +41,6 @@ public partial class App : Application
 
         _lrclibHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         _bahamutHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-        _aiHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
 
         var lrclib = new LrclibClient(_lrclibHttp);
         var neteaseHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
@@ -52,8 +50,13 @@ public partial class App : Application
         var lyrics = new LanguageAwareLrclibClient(lrclib, timed);
         var bahamut = new BahamutClient(_bahamutHttp);
         var web = new DuckDuckGoLyricsClient(_bahamutHttp);
-        var translators = new TranslatorFactory(_aiHttp, settings.Snapshot);
-        var pipeline = new LyricsPipeline(_cache, lyrics, bahamut, web, translators.Create, settings.Snapshot);
+        var pipeline = new LyricsPipeline(
+            _cache,
+            lyrics,
+            bahamut,
+            web,
+            () => new DisabledLyricsTranslator(),
+            settings.Snapshot);
         _smtc = new SmtcNowPlayingSource(settings);
 
         _window = new MainWindow(pipeline, _smtc, settings);

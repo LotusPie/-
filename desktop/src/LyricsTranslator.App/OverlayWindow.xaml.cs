@@ -47,6 +47,7 @@ public sealed partial class OverlayWindow : Window
 
         ApplyAlwaysOnTop();
         _appWindow.Show(false);
+        ApplyAlwaysOnTop();
     }
 
     public void HideQuietly()

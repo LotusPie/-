@@ -5,6 +5,7 @@ using LyricsTranslator.Core.Lyrics;
 using LyricsTranslator.Core.Models;
 using LyricsTranslator.Core.Normalization;
 using LyricsTranslator.Core.NowPlaying;
+using LyricsTranslator.Core.Overlay;
 using LyricsTranslator.Core.Pipeline;
 using LyricsTranslator.Core.Settings;
 using Microsoft.UI.Dispatching;
@@ -21,7 +22,7 @@ public partial class MainViewModel : ObservableObject
     private TrackQuery? _currentQuery;
     private IReadOnlyList<TimedLyric> _track = [];
     private readonly PlaybackInterpolator _clock = new();
-    private readonly DispatcherQueueTimer _overlayTimer;
+    private readonly System.Threading.Timer _playheadTimer;
     private TimeSpan _position;
     private TimeSpan? _duration;
     private int _generation;
@@ -32,12 +33,12 @@ public partial class MainViewModel : ObservableObject
         _settings = settings;
         _dispatcher = dispatcher;
         DetectionPaused = settings.Snapshot().DetectionPaused;
-        OverlayEnabled = settings.Snapshot().OverlayEnabled;
-        _overlayTimer = dispatcher.CreateTimer();
-        _overlayTimer.Interval = TimeSpan.FromMilliseconds(100);
-        _overlayTimer.IsRepeating = true;
-        _overlayTimer.Tick += (_, _) => TickPlayhead();
-        _overlayTimer.Start();
+        OverlayEnabled = OverlayPolicy.DefaultEnabled;
+        _playheadTimer = new System.Threading.Timer(
+            _ => TickPlayhead(),
+            null,
+            TimeSpan.FromMilliseconds(100),
+            TimeSpan.FromMilliseconds(100));
         Apply(LyricsDisplay.Idle("未偵測到 Apple Music 或瀏覽器裡的 YouTube Music。"));
     }
 
@@ -47,7 +48,7 @@ public partial class MainViewModel : ObservableObject
 
     public event EventHandler<int>? CurrentLineChanged;
 
-    public bool OverlayShouldShow => OverlayEnabled && HasLyricLines;
+    public bool OverlayShouldShow => OverlayPolicy.ShouldShow(OverlayEnabled, HasLyricLines);
 
     [ObservableProperty] private string _title = "未在播放";
     [ObservableProperty] private string _artist = string.Empty;
@@ -104,7 +105,7 @@ public partial class MainViewModel : ObservableObject
             session.PlaybackRate,
             session.TimelineLastUpdated));
 
-        if (sameTrack && !NeedsPaste && !NeedsApiKey)
+        if (sameTrack && !NeedsPaste)
         {
             return;
         }
@@ -130,7 +131,7 @@ public partial class MainViewModel : ObservableObject
             AppSettings.ClampSyncOffset(_settings.Snapshot().SyncOffsetSeconds));
         var position = PlaybackClock.PlayheadNow(_clock, offset, _duration, DateTimeOffset.Now);
         _position = position;
-        ApplyPlayhead(position, _duration);
+        _dispatcher.TryEnqueue(() => ApplyPlayhead(position, _duration));
     }
 
     private void ApplyPlayhead(TimeSpan position, TimeSpan? duration)
@@ -196,6 +197,7 @@ public partial class MainViewModel : ObservableObject
     public async Task ReloadAfterSettingsAsync()
     {
         DetectionPaused = _settings.Snapshot().DetectionPaused;
+        OverlayEnabled = _settings.Snapshot().OverlayEnabled;
         if (_currentQuery is null)
         {
             return;
@@ -276,13 +278,15 @@ public partial class MainViewModel : ObservableObject
         TranslatedLyrics = display.Translation ?? string.Empty;
         StatusMessage = display.Message ?? string.Empty;
         NeedsPaste = display.Status == LyricsStatus.NeedsPaste;
-        NeedsApiKey = display.Status == LyricsStatus.NeedsApiKey;
-        CanRetry = display.Status == LyricsStatus.Ready && display.TranslationSource == LyricsSource.Ai;
+        NeedsApiKey = false;
+        CanRetry = false;
         IsBusy = display.Status == LyricsStatus.Loading;
 
-        _track = display.Status is LyricsStatus.Ready or LyricsStatus.NeedsApiKey
-            ? LyricTrack.Build(display.OriginalLyrics, display.Translation, display.SyncedLyrics)
-            : [];
+        _track = OverlayPolicy.LinesForOverlay(
+            display.Status,
+            display.OriginalLyrics,
+            display.Translation,
+            display.SyncedLyrics);
         RebuildLines();
         var timed = _track.Any(l => l.Timestamp is not null);
         SyncCaption = _track.Count == 0
@@ -305,7 +309,7 @@ public partial class MainViewModel : ObservableObject
             });
         }
 
-        HasLyricLines = LyricLines.Count > 0;
+        HasLyricLines = OverlayPolicy.HasLyricLines(_track);
         CurrentLineIndex = -1;
         NotifyOverlayVisibility();
     }
@@ -332,9 +336,9 @@ public partial class MainViewModel : ObservableObject
             LyricLines[i].ApplyWindow(Math.Abs(i - index));
         }
 
-        RebuildOverlaySlice(index);
         if (changed)
         {
+            RebuildOverlaySlice(index);
             CurrentLineChanged?.Invoke(this, index);
         }
     }

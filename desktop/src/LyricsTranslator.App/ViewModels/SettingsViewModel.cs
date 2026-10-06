@@ -13,14 +13,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         _store = store;
         var current = store.Snapshot();
-        ProviderIndex = current.AiProvider switch
-        {
-            AiProvider.OpenAI => 1,
-            AiProvider.Gemini => 2,
-            _ => 0,
-        };
-        ApiKey = current.ApiKey ?? string.Empty;
-        Model = current.Model;
+        OverlayEnabled = current.OverlayEnabled;
         PlayerPinIndex = current.PlayerPin switch
         {
             PlayerPin.AppleMusic => 1,
@@ -31,27 +24,21 @@ public partial class SettingsViewModel : ObservableObject
         SyncOffsetSeconds = current.SyncOffsetSeconds;
     }
 
-    [ObservableProperty] private int _providerIndex;
-    [ObservableProperty] private string _apiKey = string.Empty;
-    [ObservableProperty] private string _model = string.Empty;
+    [ObservableProperty] private bool _overlayEnabled = true;
     [ObservableProperty] private int _playerPinIndex;
     [ObservableProperty] private bool _detectionPaused;
     [ObservableProperty] private double _syncOffsetSeconds;
-    [ObservableProperty] private string _status = "金鑰只存在這台電腦，不會寫進程式或上傳。";
+    [ObservableProperty] private string _status = "AI 翻譯已關閉。金鑰欄位已隱藏。";
 
     [RelayCommand]
     private void Save()
     {
+        var snapshot = _store.Snapshot();
         var settings = new AppSettings
         {
-            AiProvider = ProviderIndex switch
-            {
-                1 => AiProvider.OpenAI,
-                2 => AiProvider.Gemini,
-                _ => AiProvider.Claude,
-            },
-            ApiKey = string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(),
-            Model = Model.Trim(),
+            AiProvider = snapshot.AiProvider,
+            ApiKey = snapshot.ApiKey,
+            Model = snapshot.Model,
             PlayerPin = PlayerPinIndex switch
             {
                 1 => PlayerPin.AppleMusic,
@@ -59,7 +46,7 @@ public partial class SettingsViewModel : ObservableObject
                 _ => PlayerPin.Auto,
             },
             DetectionPaused = DetectionPaused,
-            OverlayEnabled = _store.Snapshot().OverlayEnabled,
+            OverlayEnabled = OverlayEnabled,
             SyncOffsetSeconds = AppSettings.ClampSyncOffset(SyncOffsetSeconds),
         };
         _store.Save(settings);

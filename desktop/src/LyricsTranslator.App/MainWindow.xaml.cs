@@ -88,8 +88,24 @@ public sealed partial class MainWindow : Window
     {
         if (ViewModel.OverlayShouldShow)
         {
-            _overlay ??= new OverlayWindow(ViewModel);
-            _overlay.ShowQuietly();
+            try
+            {
+                _overlay ??= new OverlayWindow(ViewModel);
+                _overlay.ShowQuietly();
+            }
+            catch
+            {
+                try
+                {
+                    _overlay = new OverlayWindow(ViewModel);
+                    _overlay.ShowQuietly();
+                }
+                catch
+                {
+                    // Main window and tray toggle remain usable.
+                }
+            }
+
             return;
         }
 

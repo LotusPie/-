@@ -27,9 +27,9 @@ public class LyricsPipelineTests
     }
 
     [Fact]
-    public async Task Uses_lrclib_original_then_ai_and_labels_source()
+    public async Task Uses_lrclib_original_without_ai_when_community_misses()
     {
-        var translator = new RecordingTranslator { Translation = "繁中一行" };
+        var translator = new RecordingTranslator { Translation = "不該出現" };
         var pipeline = Create(
             new StubLrclib(new LrclibTrack
             {
@@ -47,12 +47,11 @@ public class LyricsPipelineTests
 
         Assert.Equal(LyricsStatus.Ready, result.Status);
         Assert.Equal("Hello from the other side", result.OriginalLyrics);
-        Assert.Equal("繁中一行", result.Translation);
-        Assert.Equal("社群／LRCLIB → AI", result.SourceLabel);
+        Assert.Null(result.Translation);
+        Assert.Equal("社群／LRCLIB（尚無繁中）", result.SourceLabel);
         Assert.Equal("[00:12.00] Hello from the other side", result.SyncedLyrics);
-        Assert.True(translator.WasCalled);
-        Assert.Contains("Adele", translator.LastRequest!.Query.DisplayArtist);
-        Assert.Contains("Hello from the other side", translator.LastRequest.OriginalLyrics);
+        Assert.False(translator.WasCalled);
+        Assert.Contains("不會呼叫 AI", result.Message);
     }
 
     [Fact]
@@ -152,7 +151,7 @@ public class LyricsPipelineTests
     }
 
     [Fact]
-    public async Task Cache_hit_skips_ai_and_keeps_existing_synced()
+    public async Task Cached_community_hit_skips_translator_and_keeps_existing_synced()
     {
         var cache = new MemoryLyricsCache();
         var query = Song("Hello", "Adele");
@@ -164,7 +163,7 @@ public class LyricsPipelineTests
             OriginalLyrics = "Hello",
             OriginalSource = LyricsSource.Lrclib,
             Translation = "你好",
-            TranslationSource = LyricsSource.Ai,
+            TranslationSource = LyricsSource.Bahamut,
             SyncedLyrics = "[00:01.00] Hello",
             UpdatedAt = DateTimeOffset.UtcNow,
         });
@@ -194,7 +193,7 @@ public class LyricsPipelineTests
             OriginalLyrics = "Hello",
             OriginalSource = LyricsSource.Lrclib,
             Translation = "你好",
-            TranslationSource = LyricsSource.Ai,
+            TranslationSource = LyricsSource.Bahamut,
             UpdatedAt = DateTimeOffset.UtcNow,
         });
 
@@ -245,9 +244,9 @@ public class LyricsPipelineTests
     }
 
     [Fact]
-    public async Task Bahamut_timeout_falls_through_to_ai()
+    public async Task Bahamut_timeout_falls_through_without_ai()
     {
-        var translator = new RecordingTranslator { Translation = "AI 譯文" };
+        var translator = new RecordingTranslator { Translation = "不該出現" };
         var pipeline = Create(
             new StubLrclib(new LrclibTrack
             {
@@ -261,9 +260,10 @@ public class LyricsPipelineTests
 
         var result = await pipeline.ResolveAsync(Song("夜に駆ける", "YOASOBI"), CancellationToken.None);
 
-        Assert.True(translator.WasCalled);
-        Assert.Equal("AI 譯文", result.Translation);
-        Assert.Equal("社群／LRCLIB → AI", result.SourceLabel);
+        Assert.False(translator.WasCalled);
+        Assert.Null(result.Translation);
+        Assert.Equal("社群／LRCLIB（尚無繁中）", result.SourceLabel);
+        Assert.Equal(LyricsStatus.Ready, result.Status);
     }
 
     [Fact]
@@ -403,7 +403,7 @@ public class LyricsPipelineTests
     }
 
     [Fact]
-    public async Task Gemini_rate_limit_does_not_look_like_success_without_translation()
+    public async Task Never_invokes_translator_even_when_community_and_key_are_missing()
     {
         var translator = new ThrowingTranslator("Gemini 呼叫過於頻繁");
         var pipeline = Create(
@@ -418,29 +418,31 @@ public class LyricsPipelineTests
 
         var result = await pipeline.ResolveAsync(BahamutParserTests.YoutubeAoiShiori(), CancellationToken.None);
 
-        Assert.Equal(LyricsStatus.Error, result.Status);
+        Assert.Equal(LyricsStatus.Ready, result.Status);
         Assert.Null(result.Translation);
         Assert.Equal("社群／LRCLIB（尚無繁中）", result.SourceLabel);
-        Assert.Contains("頻繁", result.Message);
-        Assert.True(translator.WasCalled);
+        Assert.Contains("不會呼叫 AI", result.Message);
+        Assert.False(translator.WasCalled);
     }
 
     [Fact]
-    public async Task Paste_then_translate_is_labeled_hand_paste()
+    public async Task Paste_without_community_keeps_original_and_skips_ai()
     {
-        var translator = new RecordingTranslator { Translation = "手貼譯文" };
+        var translator = new RecordingTranslator { Translation = "不該出現" };
         var pipeline = Create(new MissLrclib(), translator, apiKey: "sk-test");
         var result = await pipeline.ApplyPastedOriginalAsync(Song("X", "Y"), "pasted line", CancellationToken.None);
 
         Assert.Equal(LyricsStatus.Ready, result.Status);
         Assert.Equal("pasted line", result.OriginalLyrics);
-        Assert.Equal("手貼 → AI", result.SourceLabel);
+        Assert.Null(result.Translation);
+        Assert.Equal("手貼（尚無繁中）", result.SourceLabel);
+        Assert.False(translator.WasCalled);
     }
 
     [Fact]
     public async Task Paste_asks_lrclib_for_synced_when_cache_has_none()
     {
-        var translator = new RecordingTranslator { Translation = "手貼譯文" };
+        var translator = new RecordingTranslator { Translation = "不該出現" };
         var pipeline = Create(
             new StubLrclib(new LrclibTrack
             {
@@ -455,23 +457,26 @@ public class LyricsPipelineTests
 
         Assert.Equal(LyricsStatus.Ready, result.Status);
         Assert.Equal("[00:03.00] pasted line", result.SyncedLyrics);
-        Assert.Equal("手貼譯文", result.Translation);
+        Assert.Null(result.Translation);
+        Assert.False(translator.WasCalled);
     }
 
     [Fact]
-    public async Task Missing_api_key_keeps_original_and_asks_for_key()
+    public async Task Missing_community_keeps_original_and_empty_zh_tw()
     {
+        var translator = new RecordingTranslator();
         var pipeline = Create(
             new StubLrclib(new LrclibTrack { TrackName = "Hello", ArtistName = "Adele", PlainLyrics = "Hello" }),
-            new RecordingTranslator(),
+            translator,
             apiKey: null);
 
         var result = await pipeline.ResolveAsync(Song("Hello", "Adele"), CancellationToken.None);
 
-        Assert.Equal(LyricsStatus.NeedsApiKey, result.Status);
+        Assert.Equal(LyricsStatus.Ready, result.Status);
         Assert.Equal("Hello", result.OriginalLyrics);
         Assert.Null(result.Translation);
         Assert.Equal("社群／LRCLIB（尚無繁中）", result.SourceLabel);
+        Assert.False(translator.WasCalled);
     }
 
     [Fact]
@@ -496,7 +501,7 @@ public class LyricsPipelineTests
     }
 
     [Fact]
-    public async Task Japanese_lyrics_are_sent_to_ai()
+    public async Task Japanese_lyrics_are_not_sent_to_ai()
     {
         const string japanese =
             """
@@ -505,7 +510,7 @@ public class LyricsPipelineTests
             愛してる
             時を超えて
             """;
-        var translator = new RecordingTranslator { Translation = "在夜裡奔馳" };
+        var translator = new RecordingTranslator { Translation = "不該出現" };
         var pipeline = Create(
             new StubLrclib(new LrclibTrack
             {
@@ -518,14 +523,14 @@ public class LyricsPipelineTests
 
         var result = await pipeline.ResolveAsync(Song("夜に駆ける", "YOASOBI"), CancellationToken.None);
 
-        Assert.True(translator.WasCalled);
+        Assert.False(translator.WasCalled);
         Assert.Equal(japanese, result.OriginalLyrics);
-        Assert.Equal("在夜裡奔馳", result.Translation);
-        Assert.Equal("社群／LRCLIB → AI", result.SourceLabel);
+        Assert.Null(result.Translation);
+        Assert.Equal("社群／LRCLIB（尚無繁中）", result.SourceLabel);
     }
 
     [Fact]
-    public async Task Stale_japanese_as_chinese_cache_is_retried_with_ai()
+    public async Task Stale_japanese_as_chinese_cache_is_retried_without_ai()
     {
         const string japanese = "愛してる\n時を超えて";
         var cache = new MemoryLyricsCache();
@@ -542,13 +547,14 @@ public class LyricsPipelineTests
             UpdatedAt = DateTimeOffset.UtcNow,
         });
 
-        var translator = new RecordingTranslator { Translation = "我愛你" };
+        var translator = new RecordingTranslator { Translation = "不該出現" };
         var pipeline = new LyricsPipeline(cache, new MissLrclib(), new MissBahamut(), new MissWeb(), () => translator, () => new AppSettings { ApiKey = "sk-test" });
 
         var result = await pipeline.ResolveAsync(query, CancellationToken.None);
 
-        Assert.True(translator.WasCalled);
-        Assert.Equal("我愛你", result.Translation);
+        Assert.False(translator.WasCalled);
+        Assert.Null(result.Translation);
+        Assert.Equal(japanese, result.OriginalLyrics);
     }
 
     private static LyricsPipeline Create(

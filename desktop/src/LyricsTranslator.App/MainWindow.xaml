@@ -89,7 +89,7 @@
             <TextBlock Text="貼上原文（不會憑空寫歌詞）" Margin="0,0,0,6"/>
             <TextBox Text="{x:Bind ViewModel.PasteText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True" Height="90" TextWrapping="Wrap"/>
-            <Button Content="用這段原文翻譯" Margin="0,8,0,0" Command="{x:Bind ViewModel.PasteOriginalCommand}"/>
+            <Button Content="用這段原文查繁中" Margin="0,8,0,0" Command="{x:Bind ViewModel.PasteOriginalCommand}"/>
         </StackPanel>
 
         <Grid Grid.Row="4" Margin="0,12,0,0"

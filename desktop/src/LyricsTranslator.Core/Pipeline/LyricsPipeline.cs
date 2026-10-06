@@ -12,8 +12,6 @@ public sealed class LyricsPipeline
     private readonly ILrclibClient _lrclib;
     private readonly IBahamutClient _bahamut;
     private readonly IWebLyricsClient _web;
-    private readonly Func<ILyricsTranslator> _translator;
-    private readonly Func<AppSettings> _settings;
 
     public LyricsPipeline(
         ILyricsCache cache,
@@ -27,8 +25,8 @@ public sealed class LyricsPipeline
         _lrclib = lrclib;
         _bahamut = bahamut;
         _web = web;
-        _translator = translator;
-        _settings = settings;
+        _ = translator;
+        _ = settings;
     }
 
     public async Task<LyricsDisplay> ResolveAsync(TrackQuery query, CancellationToken cancellationToken)
@@ -66,11 +64,8 @@ public sealed class LyricsPipeline
         long? lrclibId = cached?.LrclibId;
         string? syncedLyrics = cached?.SyncedLyrics;
         var instrumental = false;
-        string? aiFallback = cached is { TranslationSource: LyricsSource.Ai } && HasUsableTranslation(cached)
-            ? cached.Translation
-            : null;
 
-        // Community scrape BEFORE any LLM, even if an old AI row is in SQLite.
+        // Community scrape only. AI is off — never Gemini/Claude/OpenAI, even if an old AI row is in SQLite.
         var community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
         if (community is not null)
         {
@@ -100,7 +95,7 @@ public sealed class LyricsPipeline
             }
             catch
             {
-                // Fall through; community / paste / AI may still work.
+                // Fall through; community / paste may still work.
             }
 
             if (hit is not null)
@@ -165,7 +160,7 @@ public sealed class LyricsPipeline
                 LyricsSource.None,
                 LyricsSource.None,
                 LyricsStatus.NeedsPaste,
-                "找不到原文歌詞。不會憑空發明；請貼上原文後再翻譯。",
+                "找不到原文歌詞。不會憑空發明，也不會呼叫 AI；請貼上原文。",
                 syncedLyrics);
         }
 
@@ -177,14 +172,8 @@ public sealed class LyricsPipeline
             return ToDisplay(query, original, original, originalSource, originalSource, LyricsStatus.Ready, "原文已是繁體中文。", syncedLyrics);
         }
 
-        if (!string.IsNullOrWhiteSpace(aiFallback))
-        {
-            var keepAi = BuildRecord(query, original, originalSource, aiFallback, LyricsSource.Ai, lrclibId, syncedLyrics);
-            await _cache.UpsertAsync(keepAi, cancellationToken).ConfigureAwait(false);
-            return ToDisplay(query, original, aiFallback, originalSource, LyricsSource.Ai, LyricsStatus.Ready, null, syncedLyrics);
-        }
-
-        return await TranslateAndStoreAsync(query, original, originalSource, lrclibId, previous: null, hint: null, syncedLyrics, cancellationToken)
+        return await StoreOriginalWithoutTranslationAsync(
+                query, original, originalSource, lrclibId, syncedLyrics, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -215,7 +204,8 @@ public sealed class LyricsPipeline
             return ToDisplay(query, original, community.Translation, LyricsSource.Paste, source, LyricsStatus.Ready, null, synced);
         }
 
-        return await TranslateAndStoreAsync(query, original, LyricsSource.Paste, cached?.LrclibId, previous: null, hint: null, synced, cancellationToken)
+        return await StoreOriginalWithoutTranslationAsync(
+                query, original, LyricsSource.Paste, cached?.LrclibId, synced, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -224,28 +214,8 @@ public sealed class LyricsPipeline
         string hint,
         CancellationToken cancellationToken)
     {
-        var cached = await _cache.GetAsync(query.CacheKey, cancellationToken).ConfigureAwait(false);
-        if (cached is null || string.IsNullOrWhiteSpace(cached.OriginalLyrics))
-        {
-            return ToDisplay(query, null, null, LyricsSource.None, LyricsSource.None, LyricsStatus.NeedsPaste, "沒有原文，無法重譯。");
-        }
-
-        var synced = cached.SyncedLyrics;
-        if (string.IsNullOrWhiteSpace(synced))
-        {
-            synced = await TrySyncedFromLrclibAsync(query, cancellationToken).ConfigureAwait(false);
-        }
-
-        return await TranslateAndStoreAsync(
-                query,
-                cached.OriginalLyrics,
-                cached.OriginalSource,
-                cached.LrclibId,
-                cached.Translation,
-                hint,
-                synced,
-                cancellationToken)
-            .ConfigureAwait(false);
+        _ = hint;
+        return await ResolveAsync(query, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<CommunityTranslation?> TryCommunityAsync(TrackQuery query, CancellationToken cancellationToken)
@@ -264,7 +234,7 @@ public sealed class LyricsPipeline
         }
         catch
         {
-            // Timeout / HTML change → web search or AI.
+            // Timeout / HTML change → web search.
         }
 
         try
@@ -281,7 +251,7 @@ public sealed class LyricsPipeline
         }
         catch
         {
-            // Optional fallback; AI is last resort.
+            // Optional fallback; never AI.
         }
 
         return null;
@@ -300,53 +270,25 @@ public sealed class LyricsPipeline
         }
     }
 
-    private async Task<LyricsDisplay> TranslateAndStoreAsync(
+    private async Task<LyricsDisplay> StoreOriginalWithoutTranslationAsync(
         TrackQuery query,
         string original,
         LyricsSource originalSource,
         long? lrclibId,
-        string? previous,
-        string? hint,
         string? syncedLyrics,
         CancellationToken cancellationToken)
     {
-        var settings = _settings();
-        if (string.IsNullOrWhiteSpace(settings.ApiKey))
-        {
-            var pending = BuildRecord(query, original, originalSource, null, LyricsSource.None, lrclibId, syncedLyrics);
-            await _cache.UpsertAsync(pending, cancellationToken).ConfigureAwait(false);
-            return ToDisplay(
-                query,
-                original,
-                null,
-                originalSource,
-                LyricsSource.None,
-                LyricsStatus.NeedsApiKey,
-                "已有原文，但還沒有 API 金鑰。到設定貼上 Claude、OpenAI 或 Gemini 金鑰後再譯。",
-                syncedLyrics);
-        }
-
-        string translated;
-        try
-        {
-            translated = await _translator()
-                .TranslateAsync(new TranslationRequest(query, original, previous, hint), cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var failed = BuildRecord(query, original, originalSource, previous, previous is null ? LyricsSource.None : LyricsSource.Ai, lrclibId, syncedLyrics);
-            await _cache.UpsertAsync(failed, cancellationToken).ConfigureAwait(false);
-            return Error(query, original, originalSource, previous, previous is null ? LyricsSource.None : LyricsSource.Ai, ex.Message, syncedLyrics);
-        }
-
-        var stored = BuildRecord(query, original, originalSource, translated, LyricsSource.Ai, lrclibId, syncedLyrics);
+        var stored = BuildRecord(query, original, originalSource, null, LyricsSource.None, lrclibId, syncedLyrics);
         await _cache.UpsertAsync(stored, cancellationToken).ConfigureAwait(false);
-        return ToDisplay(query, original, translated, originalSource, LyricsSource.Ai, LyricsStatus.Ready, null, syncedLyrics);
+        return ToDisplay(
+            query,
+            original,
+            null,
+            originalSource,
+            LyricsSource.None,
+            LyricsStatus.Ready,
+            "沒有找到社群繁中。不會呼叫 AI，也不會發明譯詞。",
+            syncedLyrics);
     }
 
     private static CachedLyrics BuildRecord(
