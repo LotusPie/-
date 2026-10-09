@@ -301,6 +301,8 @@ function FollowDeck({ videoId, currentTime, playState }) {
   const autoplayTriedAt = useRef(0);
   const applyRef = useRef(() => {});
   const initialIdRef = useRef(videoId);
+  const optedOutRef = useRef(false);
+  const [optedOut, setOptedOut] = useState(false);
   const [needsGesture, setNeedsGesture] = useState(false);
   const [failed, setFailed] = useState("");
   const clockRef = useRef({
@@ -324,6 +326,17 @@ function FollowDeck({ videoId, currentTime, playState }) {
   function applyPlan() {
     const player = playerRef.current;
     if (!player || !readyRef.current) return;
+    if (optedOutRef.current) {
+      setNeedsGesture(false);
+      try {
+        player.mute?.();
+        const state = readPlayerState(player);
+        if (state === 1 || state === 3) player.pauseVideo();
+      } catch {
+        /* player is going away */
+      }
+      return;
+    }
     const plan = planFollow({
       localVideoId: readPlayerVideoId(player),
       localTime: readPlayerTime(player),
@@ -380,6 +393,15 @@ function FollowDeck({ videoId, currentTime, playState }) {
           onReady: (event) => {
             playerRef.current = event.target;
             readyRef.current = true;
+            if (optedOutRef.current) {
+              try {
+                event.target.mute();
+                event.target.pauseVideo();
+              } catch {
+                /* already stopped */
+              }
+              return;
+            }
             autoplayTriedAt.current = Date.now();
             try {
               event.target.playVideo();
@@ -413,6 +435,26 @@ function FollowDeck({ videoId, currentTime, playState }) {
     applyRef.current();
   }, [sampleKey]);
 
+  function leaveSync() {
+    optedOutRef.current = true;
+    setOptedOut(true);
+    setNeedsGesture(false);
+    const player = playerRef.current;
+    if (!player) return;
+    try {
+      player.mute?.();
+      player.pauseVideo?.();
+    } catch {
+      /* player is going away */
+    }
+  }
+
+  function rejoin() {
+    optedOutRef.current = false;
+    setOptedOut(false);
+    startTogether();
+  }
+
   function startTogether() {
     const player = playerRef.current;
     unlockedRef.current = true;
@@ -441,21 +483,35 @@ function FollowDeck({ videoId, currentTime, playState }) {
 
   return (
     <div className="stack">
-      <div className="yt-frame">
+      <div className={optedOut ? "yt-frame yt-away" : "yt-frame"}>
         <div ref={hostRef} />
       </div>
-      {failed ? (
-        <p className="hint" data-yt-error={failed}>
-          {/^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname)
-            ? "YouTube 不接受 IP 網址。請改開 localhost，或用有名字的網址。"
-            : "這支影片不能在這裡播。換一個連結，或這輪跳過。"}
-        </p>
-      ) : null}
-      {needsGesture ? (
-        <button className="primary xl together" type="button" onClick={startTogether}>
-          開始一起看
-        </button>
-      ) : null}
+      {optedOut ? (
+        <>
+          <p className="hint">這支手機已退出同步。其他人繼續播。</p>
+          <button className="secondary" type="button" onClick={rejoin}>
+            再一起看
+          </button>
+        </>
+      ) : (
+        <>
+          {failed ? (
+            <p className="hint" data-yt-error={failed}>
+              {/^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname)
+                ? "YouTube 不接受 IP 網址。請改開 localhost，或用有名字的網址。"
+                : "這支影片不能在這裡播。換一個連結，或這輪跳過。"}
+            </p>
+          ) : null}
+          {needsGesture ? (
+            <button className="primary xl together" type="button" onClick={startTogether}>
+              開始一起看
+            </button>
+          ) : null}
+          <button className="secondary" type="button" onClick={leaveSync}>
+            退出同步收聽
+          </button>
+        </>
+      )}
     </div>
   );
 }

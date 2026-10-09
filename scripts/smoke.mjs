@@ -655,6 +655,8 @@ function testWatchSync() {
   assert.equal(dj.includes("聲音從這支手機出來"), false);
   assert.equal(dj.includes("只播這一支。大家一起看這支影片。"), true);
   assert.equal(dj.includes("開始一起看"), true);
+  assert.equal(dj.includes("退出同步收聽"), true);
+  assert.equal(dj.includes("其他人繼續播"), true);
   assert.equal(dj.includes('if (mix) params.set("list"'), true);
   assert.equal(play.includes("聲音只從本輪迪爵的手機出來"), false);
   assert.equal(play.includes("大家一起看同一支影片"), true);
