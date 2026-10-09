@@ -101,14 +101,18 @@ function remainText(ms) {
 
 function DrawWheel({ draw, act, error, handFull }) {
   const slices = draw?.slices || [];
-  const lastAt = draw?.lastAt || 0;
-  const lastId = draw?.lastId || null;
-  const seen = useRef(lastAt);
-  const errorSeen = useRef(error || "");
-  const [angle, setAngle] = useState(() => (lastId ? -sliceMid(slices, lastId) : 0));
-  const [busy, setBusy] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const wheelSpin = draw?.wheelSpin || 0;
+  const wheelCard = draw?.wheelCard || null;
+  const spinsLeft = draw?.spinsLeft == null ? 3 : draw.spinsLeft;
+  const slicesRef = useRef(slices);
+  const actRef = useRef(act);
+  slicesRef.current = slices;
+  actRef.current = act;
   const turns = useRef(0);
+  const seenSpin = useRef(0);
+  const [angle, setAngle] = useState(0);
+  const [revealedId, setRevealedId] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -116,31 +120,32 @@ function DrawWheel({ draw, act, error, handFull }) {
   }, []);
 
   useEffect(() => {
-    if (!lastAt || lastAt === seen.current) return undefined;
-    seen.current = lastAt;
+    if (!wheelSpin || !wheelCard || wheelSpin === seenSpin.current) return undefined;
+    seenSpin.current = wheelSpin;
     const reduce =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const mid = sliceMid(slicesRef.current, wheelCard);
     if (!reduce) turns.current += 5;
-    setAngle(turns.current * 360 - sliceMid(slices, lastId));
-    const timer = setTimeout(() => setBusy(false), reduce ? 0 : DRAW_WHEEL_MS);
+    setAngle(turns.current * 360 - mid);
+    setRevealedId(null);
+    const timer = setTimeout(() => {
+      setRevealedId(wheelCard);
+      actRef.current({ name: "cardSpinTake" });
+    }, reduce ? 0 : DRAW_WHEEL_MS);
     return () => clearTimeout(timer);
-  }, [lastAt, lastId, slices]);
-
-  useEffect(() => {
-    if (busy && error && error !== errorSeen.current) setBusy(false);
-  }, [busy, error]);
+  }, [wheelSpin, wheelCard]);
 
   const wait = Math.max(0, (draw?.readyAt || 0) - now);
-  const bonus = draw?.bonus || 0;
-  const cooling = wait > 0;
-  const won = slices.find((slice) => slice.id === lastId);
-  const canSpin = !busy && !handFull && (bonus > 0 || !cooling);
+  const cooling = spinsLeft <= 0 && wait > 0;
+  const spinning = Boolean(wheelCard);
+  const resultId = spinning ? (revealedId === wheelCard ? wheelCard : null) : draw?.lastId;
+  const won = slices.find((slice) => slice.id === resultId);
+  const canSpin = !spinning && !handFull && !cooling;
   let label = "轉一下";
-  if (busy) label = "轉盤轉著";
+  if (spinning) label = "轉盤轉著";
   else if (handFull) label = "手牌滿了";
-  else if (bonus > 0) label = "再轉一次";
-  else if (cooling) label = "還要 " + remainText(wait);
+  else if (cooling) label = "冷卻中";
 
   return (
     <div className="draw-panel">
@@ -169,26 +174,15 @@ function DrawWheel({ draw, act, error, handFull }) {
           <div className="draw-hub" />
         </div>
       </div>
-      {won ? (
-        <p className="draw-result">抽到 {won.name}{won.id === "respin" ? "，可以立刻再轉" : ""}</p>
-      ) : (
-        <p className="draw-wait">轉一下，牌會進你的手牌。</p>
-      )}
-      {cooling ? (
-        <p className="draw-wait">{bonus > 0 ? "這一轉可以再轉。下一轉還要 " + remainText(wait) : "下一轉還要 " + remainText(wait)}</p>
-      ) : null}
+      {spinning && !won ? <p className="draw-result">轉盤轉著</p> : null}
+      {won ? <p className="draw-result">抽到 {won.name}</p> : null}
+      {!spinning && !won ? <p className="draw-wait">按轉一下，看轉盤停在哪一張。</p> : null}
+      {spinsLeft > 0 ? <p className="draw-wait">還可以抽 {spinsLeft} 次</p> : <p className="draw-wait">這次用完才會再算半小時</p>}
+      {cooling ? <p className="draw-cooldown">冷卻 {remainText(wait)}</p> : null}
       {handFull ? <p className="hint">手牌滿了，先用掉一張。</p> : null}
+      {error && !spinning ? <p className="hint">{error}</p> : null}
       {draw?.missing?.length ? <p className="hint">這些牌沒有，已跳過。</p> : null}
-      <button
-        className="primary draw-spin"
-        type="button"
-        disabled={!canSpin}
-        onClick={() => {
-          errorSeen.current = error || "";
-          setBusy(true);
-          act({ name: "cardSpin" });
-        }}
-      >
+      <button className="primary draw-spin" type="button" disabled={!canSpin} onClick={() => act({ name: "cardSpin" })}>
         {label}
       </button>
     </div>
@@ -232,6 +226,13 @@ export function CardDesk({ room, youId, act, error }) {
 
   return (
     <section className="card-desk">
+      <section className="deck-block">
+        <header className="deck-head">
+          <h2>抽一張</h2>
+          <p>進房先抽三次</p>
+        </header>
+        <DrawWheel draw={cards.draw} act={act} error={error} handFull={hand.length >= 3} />
+      </section>
       <section className="deck-block">
         <header className="deck-head">
           <h2>目前的手牌</h2>
@@ -298,7 +299,7 @@ export function CardDesk({ room, youId, act, error }) {
             })}
           </div>
         ) : (
-          <p className="collect-empty hint">還沒有牌。每 3 分鐘抽一張，手牌滿三張就跳過。也可以用分數買。</p>
+          <p className="collect-empty hint">還沒有牌。進房間可以先抽三次，用完才開始算半小時。也可以用分數買。</p>
         )}
       </section>
       {cards.peek ? (

@@ -244,3 +244,11 @@
     transition: none;
   }
 }
+
+.draw-cooldown {
+  margin: 0;
+  text-align: center;
+  color: var(--amber);
+  font-size: 1.35rem;
+  font-weight: 700;
+}

@@ -51,8 +51,29 @@ function drawTable() {
 
 function ensureSpin(cards) {
   if (!cards.spinReady) cards.spinReady = {};
-  if (!cards.bonusSpins) cards.bonusSpins = {};
+  if (!cards.spinsLeft) cards.spinsLeft = {};
+  if (!cards.pendingDraw) cards.pendingDraw = {};
+  if (!cards.wheelSpin) cards.wheelSpin = {};
   if (!cards.lastSpin) cards.lastSpin = {};
+}
+
+function spinsLeftOf(cards, playerId) {
+  ensureSpin(cards);
+  if (cards.spinsLeft[playerId] == null) cards.spinsLeft[playerId] = 3;
+  return cards.spinsLeft[playerId];
+}
+
+function rollDrawCard() {
+  const table = drawTable();
+  if (!table.slices.length) return null;
+  const total = table.slices.reduce((sum, slice) => sum + slice.weight, 0);
+  let roll = Math.random() * total;
+  let picked = table.slices[table.slices.length - 1];
+  for (const slice of table.slices) {
+    roll -= slice.weight;
+    if (roll < 0) return slice;
+  }
+  return picked;
 }
 
 export function spinDraw(room, playerId, now = Date.now()) {
@@ -63,37 +84,46 @@ export function spinDraw(room, playerId, now = Date.now()) {
   if (hand.length >= HAND_MAX) return { error: "手牌滿了，先用掉一張。" };
   const cards = room.cards;
   ensureSpin(cards);
+  if (cards.pendingDraw[playerId]) return { error: "轉盤還在轉。" };
+  const left = spinsLeftOf(cards, playerId);
   const readyAt = cards.spinReady[playerId] || 0;
-  const bonus = cards.bonusSpins[playerId] || 0;
-  const cooling = now < readyAt;
-  if (cooling && bonus <= 0) return { error: "還沒到可以轉的時間。" };
-  const table = drawTable();
-  if (!table.slices.length) return { error: "現在沒有可以抽的牌。" };
-  const total = table.slices.reduce((sum, slice) => sum + slice.weight, 0);
-  let roll = Math.random() * total;
-  let picked = table.slices[table.slices.length - 1];
-  for (const slice of table.slices) {
-    roll -= slice.weight;
-    if (roll < 0) {
-      picked = slice;
-      break;
-    }
-  }
-  if (cooling) cards.bonusSpins[playerId] = bonus - 1;
-  else cards.spinReady[playerId] = now + DRAW_SPIN_MS;
-  hand.push(picked.id);
-  if (picked.id === "respin") cards.bonusSpins[playerId] = (cards.bonusSpins[playerId] || 0) + 1;
-  cards.lastSpin[playerId] = { card: picked.id, at: now };
+  if (left <= 0 && now < readyAt) return { error: "還沒到可以轉的時間。" };
+  const picked = rollDrawCard();
+  if (!picked) return { error: "現在沒有可以抽的牌。" };
+  cards.pendingDraw[playerId] = { card: picked.id, at: now };
+  cards.wheelSpin[playerId] = (cards.wheelSpin[playerId] || 0) + 1;
   return { ok: true, card: picked.id };
+}
+
+export function takeDraw(room, playerId, now = Date.now()) {
+  const player = findPlayer(room, playerId);
+  if (!player) return { error: "你不在這個房間。" };
+  if (!room.cards) return { error: "現在不能抽牌。" };
+  const cards = room.cards;
+  ensureSpin(cards);
+  const pending = cards.pendingDraw[playerId];
+  if (!pending) return { ok: true };
+  const hand = handOf(room, playerId);
+  if (hand.length >= HAND_MAX) return { error: "手牌滿了，先用掉一張。" };
+  hand.push(pending.card);
+  delete cards.pendingDraw[playerId];
+  const left = spinsLeftOf(cards, playerId);
+  if (left > 0) cards.spinsLeft[playerId] = left - 1;
+  if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + DRAW_SPIN_MS;
+  cards.lastSpin[playerId] = { card: pending.card, at: now };
+  return { ok: true, card: pending.card };
 }
 
 function presentDraw(cards, viewerId) {
   const table = drawTable();
   const readyAt = cards?.spinReady?.[viewerId] || 0;
   const last = cards?.lastSpin?.[viewerId];
+  const spinsLeft = cards?.spinsLeft?.[viewerId] == null ? 3 : cards.spinsLeft[viewerId];
   return {
     readyAt,
-    bonus: cards?.bonusSpins?.[viewerId] || 0,
+    spinsLeft,
+    wheelSpin: cards?.wheelSpin?.[viewerId] || 0,
+    wheelCard: cards?.pendingDraw?.[viewerId]?.card || null,
     lastId: last?.card || null,
     lastAt: last?.at || 0,
     slices: table.slices,
@@ -113,7 +143,9 @@ export function initCards(now = Date.now()) {
     pendingExtra: false,
     pendingNext: null,
     spinReady: {},
-    bonusSpins: {},
+    spinsLeft: {},
+    pendingDraw: {},
+    wheelSpin: {},
     lastSpin: {},
   };
 }
@@ -150,13 +182,6 @@ export function tickCardDraws(room, now = Date.now()) {
   let changed = false;
   while (cards.draws < due) {
     cards.draws += 1;
-    for (const player of room.players) {
-      if (!player.connected) continue;
-      const hand = handOf(room, player.id);
-      if (hand.length >= HAND_MAX) continue;
-      hand.push(randomCardId());
-      changed = true;
-    }
   }
   return changed;
 }
@@ -392,6 +417,9 @@ export function forgetPlayer(room, playerId) {
   if (cards.spinReady) delete cards.spinReady[playerId];
   if (cards.bonusSpins) delete cards.bonusSpins[playerId];
   if (cards.lastSpin) delete cards.lastSpin[playerId];
+  if (cards.spinsLeft) delete cards.spinsLeft[playerId];
+  if (cards.pendingDraw) delete cards.pendingDraw[playerId];
+  if (cards.wheelSpin) delete cards.wheelSpin[playerId];
 }
 
 export function presentCards(room, viewerId) {
