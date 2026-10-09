@@ -1,0 +1,180 @@
+import { useEffect, useState } from "react";
+import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
+import { DjGame } from "./dj.jsx";
+import { CardDesk } from "./cards.jsx";
+import { Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
+import { ProfilePage } from "./profile.jsx";
+
+async function writeText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
+}
+
+const PAGE_KEY = "on-the-trip-page";
+
+function readLocalPage() {
+  try {
+    const value = sessionStorage.getItem(PAGE_KEY);
+    if (value === "play" || value === "cards" || value === "rank" || value === "me") return value;
+  } catch {
+    // this browser is not keeping local page state
+  }
+  return "play";
+}
+
+function roomLink(code) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("room", code);
+  url.hash = "";
+  return url.toString();
+}
+
+export default function App() {
+  const { room, youId, error, setError, status, create, join, leave, act } = useRoom();
+  const [nickname, setNickname] = useState(() => loadSession()?.nickname || "");
+  const [linkCode] = useState(() => roomCodeFromLocation());
+  const [code, setCode] = useState(linkCode);
+  const [toast, setToast] = useState("");
+  const [page, setPage] = useState(readLocalPage);
+  const invited = !room && linkCode && code === linkCode ? linkCode : "";
+
+  useEffect(() => {
+    document.title = room ? `房間 ${room.code} · 旅途小遊戲` : "旅途小遊戲";
+  }, [room]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(PAGE_KEY, page);
+    } catch {
+      // the choice still stays in this page until reload
+    }
+  }, [page]);
+
+  function choosePage(next) {
+    if (next !== "play" && next !== "cards" && next !== "rank" && next !== "me") return;
+    setPage(next);
+  }
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(""), 2200);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  async function copyCode() {
+    const ok = await writeText(room.code);
+    setToast(ok ? "代碼複製好了" : "複製沒成功，請自己選取代碼");
+  }
+
+  async function shareLink() {
+    const url = roomLink(room.code);
+    const text = `來一起玩旅途小遊戲，房間代碼 ${room.code}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "旅途小遊戲", text, url });
+        return;
+      } catch (event) {
+        if (event?.name === "AbortError") return;
+      }
+    }
+    const ok = await writeText(url);
+    setToast(ok ? "連結複製好了" : "複製沒成功，請自己選取網址");
+  }
+
+  const returning = !room && status === "connecting" && Boolean(loadSession()?.playerId);
+  const pending = status === "connecting";
+  const onPlay = page === "play";
+  const appClass = ["app", room ? "in-room" : "", page === "rank" ? "show-rank" : "", page === "cards" ? "show-cards" : ""]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className={appClass}>
+      <header className="topbar">
+        <p className="brand-en">on the trip</p>
+        <div className="title-row">
+          <h1>旅途小遊戲</h1>
+          {room && (
+            <p className="code" aria-label={`房間代碼 ${room.code}`}>
+              {room.code}
+            </p>
+          )}
+        </div>
+      </header>
+
+      {room && status !== "open" && <p className="banner">正在重新連上房間…</p>}
+      {room && error && (
+        <p className="banner" role="alert">
+          {error}
+          <button className="texty" type="button" onClick={() => setError("")}>
+            知道了
+          </button>
+        </p>
+      )}
+
+      <div
+        className={onPlay ? "play-stage" : "play-stage is-parked"}
+        aria-hidden={onPlay ? undefined : true}
+        inert={onPlay ? undefined : "true"}
+      >
+        {!room && returning && <p className="panel">正在回到房間…</p>}
+        {!room && !returning && (
+          <Home
+            nickname={nickname}
+            setNickname={setNickname}
+            code={code}
+            setCode={setCode}
+            onCreate={create}
+            onJoin={join}
+            error={error}
+            pending={pending}
+            invited={invited}
+          />
+        )}
+        {room?.phase === "lobby" && (
+          <Lobby onStart={(game) => act({ name: "start", game })} onLeave={leave} />
+        )}
+        {room?.game?.kind === "dj" && <DjGame room={room} youId={youId} act={act} />}
+      </div>
+      {page === "rank" && <ScorePage room={room} youId={youId} />}
+      {page === "cards" &&
+        (room ? (
+          <CardDesk room={room} youId={youId} act={act} error={error} />
+        ) : (
+          <section className="panel card-page stack">
+            <h2>我的卡牌</h2>
+            <p className="hint">進房間之後，這裡會顯示目前的手牌和牌店。</p>
+          </section>
+        ))}
+      {page === "me" && <ProfilePage key={youId || "out"} room={room} youId={youId} act={act} />}
+      <footer>
+        <p>私人房間 · 沒有帳號 · 不會公開列出</p>
+        {room && (
+          <div className="row footer-actions">
+            <button className="tiny" type="button" onClick={copyCode}>
+              複製代碼
+            </button>
+            <button className="tiny" type="button" onClick={shareLink}>
+              分享連結
+            </button>
+          </div>
+        )}
+      </footer>
+      <PageSwitch page={page} onChange={choosePage} />
+      {toast && <p className="toast">{toast}</p>}
+    </div>
+  );
+}
