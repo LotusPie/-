@@ -3,6 +3,7 @@ using LyricsTranslator.Core.Cache;
 using LyricsTranslator.Core.Lyrics;
 using LyricsTranslator.Core.NowPlaying;
 using LyricsTranslator.Core.Pipeline;
+using LyricsTranslator.Core.Providers;
 using LyricsTranslator.Core.Settings;
 using LyricsTranslator.Core.Translation;
 using LyricsTranslator.NowPlaying;
@@ -47,14 +48,12 @@ public partial class App : Application
         var timed = new TimedLyricsRouter(
             new NeteaseTimedLyricsClient(neteaseHttp),
             new LrclibTimedLyricsSource(lrclib));
-        var lyrics = new LanguageAwareLrclibClient(lrclib, timed);
         var bahamut = new BahamutClient(_bahamutHttp);
         var web = new DuckDuckGoLyricsClient(_bahamutHttp);
+        var lookup = LyricsLookup.Create(bahamut, web, lrclib, timed);
         var pipeline = new LyricsPipeline(
             _cache,
-            lyrics,
-            bahamut,
-            web,
+            lookup,
             () => new DisabledLyricsTranslator(),
             settings.Snapshot);
         _smtc = new SmtcNowPlayingSource(settings);

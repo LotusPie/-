@@ -79,6 +79,15 @@ Visual Studio：開啟 `desktop\LyricsTranslator.sln`，將 `LyricsTranslator.Ap
 
 LRCLIB 要求 `User-Agent`；本應用使用 `LyricsTranslator/1.0`。巴哈姆特只在本機抓 HTML、本機快取，不打包歌詞。
 
+## 架構（對齊 better-lyrics 的分層，不是抄擴充套件）
+
+參考 [better-lyrics](https://github.com/better-lyrics) / [braccato](https://github.com/better-lyrics/braccato) 的 **ProviderChain + 時軸／譯詞分層 + 浮窗只吃時間軸**，套在 WinUI／SMTC 上：
+
+- `Providers/`：翻譯鏈（巴哈姆特 → Mojim／網頁）與原文／LRC 鏈分開；丟例外的來源跳過，先命中先用。**不會**拿羅馬拼音 LRC 去蓋過巴哈繁中。
+- `LyricTrack.Build`：查完之後才把 LRC 時間戳對到畫面上的繁中行。
+- `SyncedLineStream`：浮窗／主視窗只吃「播放頭 + 已對齊的行」；clock 在外面（SMTC 內插），引擎自己不擁有時鐘。
+- 仍保留巴哈解析／chrome 過濾、網易雲／LRCLIB 語言 LRC、WinRT pin `10.0.22621.57`。不做 Musixmatch、逐音節卡拉 OK、YTM DOM 注入、AI 翻譯。
+
 ## 播放來源
 
 - **Apple Music**：Store App 的 SMTC。會拆 `歌手 — 專輯`，且不盲信 Paused。

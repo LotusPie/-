@@ -1,13 +1,13 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using LyricsTranslator.Core.Lyrics;
 using LyricsTranslator.Core.Models;
 using LyricsTranslator.Core.Normalization;
 using LyricsTranslator.Core.NowPlaying;
 using LyricsTranslator.Core.Overlay;
 using LyricsTranslator.Core.Pipeline;
 using LyricsTranslator.Core.Settings;
+using LyricsTranslator.Core.Sync;
 using Microsoft.UI.Dispatching;
 
 namespace LyricsTranslator.ViewModels;
@@ -20,7 +20,7 @@ public partial class MainViewModel : ObservableObject
     private readonly SemaphoreSlim _runGate = new(1, 1);
     private CancellationTokenSource _cts = new();
     private TrackQuery? _currentQuery;
-    private IReadOnlyList<TimedLyric> _track = [];
+    private readonly SyncedLineStream _sync = new();
     private readonly PlaybackInterpolator _clock = new();
     private readonly System.Threading.Timer _playheadTimer;
     private TimeSpan _position;
@@ -79,7 +79,7 @@ public partial class MainViewModel : ObservableObject
             _duration = null;
             Publish(LyricsDisplay.Idle("未偵測到 Apple Music 或瀏覽器裡的 YouTube Music。可在設定釘選播放來源，或暫停偵測。"));
             _currentQuery = null;
-            _track = [];
+            _sync.Reset([]);
             return;
         }
 
@@ -282,25 +282,25 @@ public partial class MainViewModel : ObservableObject
         CanRetry = false;
         IsBusy = display.Status == LyricsStatus.Loading;
 
-        _track = OverlayPolicy.LinesForOverlay(
+        _sync.Reset(OverlayPolicy.LinesForOverlay(
             display.Status,
             display.OriginalLyrics,
             display.Translation,
-            display.SyncedLyrics);
+            display.SyncedLyrics));
         RebuildLines();
-        var timed = _track.Any(l => l.Timestamp is not null);
-        SyncCaption = _track.Count == 0
+        var snapshot = _sync.Tick(_position);
+        SyncCaption = !snapshot.HasLines
             ? string.Empty
-            : timed
+            : snapshot.HasTiming
                 ? "依 LRC 時間軸跟隨"
                 : "無 LRC 時間軸（不依等分時長猜測）";
-        HighlightCurrentLine();
+        ApplySnapshot(snapshot);
     }
 
     private void RebuildLines()
     {
         LyricLines.Clear();
-        foreach (var line in _track)
+        foreach (var line in _sync.Lines)
         {
             LyricLines.Add(new LyricLineItem
             {
@@ -309,14 +309,16 @@ public partial class MainViewModel : ObservableObject
             });
         }
 
-        HasLyricLines = OverlayPolicy.HasLyricLines(_track);
+        HasLyricLines = OverlayPolicy.HasLyricLines(_sync.Lines);
         CurrentLineIndex = -1;
         NotifyOverlayVisibility();
     }
 
-    private void HighlightCurrentLine()
+    private void HighlightCurrentLine() => ApplySnapshot(_sync.Tick(_position));
+
+    private void ApplySnapshot(SyncedLineSnapshot snapshot)
     {
-        if (LyricLines.Count == 0)
+        if (!snapshot.HasLines)
         {
             OverlayLines.Clear();
             if (CurrentLineIndex != 0)
@@ -328,41 +330,27 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        var index = LyricTrack.IndexAt(_track, _position);
-        var changed = index != CurrentLineIndex;
-        CurrentLineIndex = index;
+        CurrentLineIndex = snapshot.CurrentIndex;
         for (var i = 0; i < LyricLines.Count; i++)
         {
-            LyricLines[i].ApplyWindow(Math.Abs(i - index));
+            LyricLines[i].ApplyWindow(Math.Abs(i - snapshot.CurrentIndex));
         }
 
-        if (changed)
+        if (snapshot.IndexChanged)
         {
-            RebuildOverlaySlice(index);
-            CurrentLineChanged?.Invoke(this, index);
-        }
-    }
-
-    private void RebuildOverlaySlice(int index)
-    {
-        OverlayLines.Clear();
-        if (LyricLines.Count == 0)
-        {
-            return;
-        }
-
-        var start = Math.Max(0, index - 2);
-        var end = Math.Min(LyricLines.Count - 1, index + 2);
-        for (var i = start; i <= end; i++)
-        {
-            var source = LyricLines[i];
-            var item = new LyricLineItem
+            OverlayLines.Clear();
+            foreach (var item in snapshot.Window)
             {
-                Original = source.Original,
-                Translation = source.Translation,
-            };
-            item.ApplyWindow(Math.Abs(i - index));
-            OverlayLines.Add(item);
+                var line = new LyricLineItem
+                {
+                    Original = item.Line.Original,
+                    Translation = item.Line.Translation,
+                };
+                line.ApplyWindow(item.Distance);
+                OverlayLines.Add(line);
+            }
+
+            CurrentLineChanged?.Invoke(this, snapshot.CurrentIndex);
         }
     }
 

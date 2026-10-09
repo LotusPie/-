@@ -1,6 +1,7 @@
 using LyricsTranslator.Core.Cache;
 using LyricsTranslator.Core.Lyrics;
 using LyricsTranslator.Core.Models;
+using LyricsTranslator.Core.Providers;
 using LyricsTranslator.Core.Settings;
 using LyricsTranslator.Core.Translation;
 
@@ -9,9 +10,7 @@ namespace LyricsTranslator.Core.Pipeline;
 public sealed class LyricsPipeline
 {
     private readonly ILyricsCache _cache;
-    private readonly ILrclibClient _lrclib;
-    private readonly IBahamutClient _bahamut;
-    private readonly IWebLyricsClient _web;
+    private readonly LyricsLookup _lookup;
 
     public LyricsPipeline(
         ILyricsCache cache,
@@ -20,11 +19,18 @@ public sealed class LyricsPipeline
         IWebLyricsClient web,
         Func<ILyricsTranslator> translator,
         Func<AppSettings> settings)
+        : this(cache, LyricsLookup.FromClients(lrclib, bahamut, web), translator, settings)
+    {
+    }
+
+    public LyricsPipeline(
+        ILyricsCache cache,
+        LyricsLookup lookup,
+        Func<ILyricsTranslator> translator,
+        Func<AppSettings> settings)
     {
         _cache = cache;
-        _lrclib = lrclib;
-        _bahamut = bahamut;
-        _web = web;
+        _lookup = lookup;
         _ = translator;
         _ = settings;
     }
@@ -46,7 +52,8 @@ public sealed class LyricsPipeline
             var synced = cached!.SyncedLyrics;
             if (string.IsNullOrWhiteSpace(synced))
             {
-                synced = await TrySyncedFromLrclibAsync(query, cancellationToken).ConfigureAwait(false);
+                var ctx = new ProviderContext(query, cancellationToken);
+                synced = (await _lookup.Timed.FetchAsync(ctx).ConfigureAwait(false))?.Text;
                 if (!string.IsNullOrWhiteSpace(synced))
                 {
                     await _cache.UpsertAsync(
@@ -59,76 +66,66 @@ public sealed class LyricsPipeline
             return ToDisplay(query, cached.OriginalLyrics, cached.Translation, cached.OriginalSource, cached.TranslationSource, LyricsStatus.Ready, null, synced);
         }
 
+        var context = new ProviderContext(query, cancellationToken);
         string? original = cached?.OriginalLyrics;
         var originalSource = cached?.OriginalSource ?? LyricsSource.None;
         long? lrclibId = cached?.LrclibId;
         string? syncedLyrics = cached?.SyncedLyrics;
         var instrumental = false;
 
-        // Community scrape only. AI is off — never Gemini/Claude/OpenAI, even if an old AI row is in SQLite.
-        var community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
-        if (community is not null)
+        var translationHit = await _lookup.Translation.FetchAsync(context).ConfigureAwait(false);
+        ApplyRecovered(context, translationHit);
+
+        string? translation = translationHit?.Text;
+        var translationSource = translationHit?.Source ?? LyricsSource.None;
+
+        var needOriginal = string.IsNullOrWhiteSpace(original);
+        var needSynced = string.IsNullOrWhiteSpace(syncedLyrics);
+        if (needOriginal || needSynced)
         {
-            query = query.WithRecovered(
-                BahamutParser.ExtractNativeTitle(community.SourceTitle),
-                BahamutParser.ExtractNativeArtist(community.SourceTitle));
-        }
-
-        string? translation = community?.Translation;
-        var translationSource = community is null ? LyricsSource.None : BahamutParser.SourceFromSite(community.SiteLabel);
-
-        // LRCLIB only fills original / LRC. Missing 繁中 is not a reason to call it
-        // (that used to skip Bahamut and jump to Gemini). Retry community after
-        // LRCLIB recovers native names so romaji SMTC still finds 日+羅+中 posts.
-        var needLrclib = string.IsNullOrWhiteSpace(original) ||
-                         string.IsNullOrWhiteSpace(syncedLyrics);
-        if (needLrclib)
-        {
-            LrclibTrack? hit = null;
-            try
+            if (needOriginal)
             {
-                hit = await _lrclib.FindAsync(query, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                // Fall through; community / paste may still work.
-            }
-
-            if (hit is not null)
-            {
-                lrclibId = hit.Id;
-                query = query.WithRecovered(hit.TrackName, hit.ArtistName);
-
-                if (string.IsNullOrWhiteSpace(syncedLyrics) && !string.IsNullOrWhiteSpace(hit.SyncedLyrics))
+                var originalHit = await _lookup.Original.FetchAsync(context).ConfigureAwait(false);
+                if (originalHit is not null)
                 {
-                    syncedLyrics = hit.SyncedLyrics;
-                }
-
-                if (hit.Instrumental && string.IsNullOrWhiteSpace(hit.EffectivePlainLyrics))
-                {
-                    instrumental = true;
-                }
-                else if (string.IsNullOrWhiteSpace(original) && !string.IsNullOrWhiteSpace(hit.EffectivePlainLyrics))
-                {
-                    original = hit.EffectivePlainLyrics;
-                    originalSource = LyricsSource.Lrclib;
-                }
-
-                if (string.IsNullOrWhiteSpace(translation))
-                {
-                    community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
-                    if (community is not null)
+                    lrclibId = originalHit.LrclibId ?? lrclibId;
+                    ApplyRecovered(context, originalHit);
+                    if (originalHit.Instrumental && string.IsNullOrWhiteSpace(originalHit.Text))
                     {
-                        translation = community.Translation;
-                        translationSource = BahamutParser.SourceFromSite(community.SiteLabel);
+                        instrumental = true;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(originalHit.Text))
+                    {
+                        original = originalHit.Text;
+                        originalSource = originalHit.Source;
                     }
                 }
             }
+
+            if (needSynced)
+            {
+                var timedHit = await _lookup.Timed.FetchAsync(context).ConfigureAwait(false);
+                if (timedHit is not null)
+                {
+                    lrclibId = timedHit.LrclibId ?? lrclibId;
+                    ApplyRecovered(context, timedHit);
+                    if (!string.IsNullOrWhiteSpace(timedHit.Text))
+                    {
+                        syncedLyrics = timedHit.Text;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(translation))
+            {
+                translationHit = await _lookup.Translation.FetchAsync(context).ConfigureAwait(false);
+                ApplyRecovered(context, translationHit);
+                translation = translationHit?.Text;
+                translationSource = translationHit?.Source ?? LyricsSource.None;
+            }
         }
+
+        query = context.Query;
 
         if (instrumental && string.IsNullOrWhiteSpace(translation))
         {
@@ -189,19 +186,19 @@ public sealed class LyricsPipeline
         }
 
         var cached = await _cache.GetAsync(query.CacheKey, cancellationToken).ConfigureAwait(false);
+        var context = new ProviderContext(query, cancellationToken);
         var synced = cached?.SyncedLyrics;
         if (string.IsNullOrWhiteSpace(synced))
         {
-            synced = await TrySyncedFromLrclibAsync(query, cancellationToken).ConfigureAwait(false);
+            synced = (await _lookup.Timed.FetchAsync(context).ConfigureAwait(false))?.Text;
         }
 
-        var community = await TryCommunityAsync(query, cancellationToken).ConfigureAwait(false);
-        if (community is not null && !string.IsNullOrWhiteSpace(community.Translation))
+        var community = await _lookup.Translation.FetchAsync(context).ConfigureAwait(false);
+        if (community is not null && !string.IsNullOrWhiteSpace(community.Text))
         {
-            var source = BahamutParser.SourceFromSite(community.SiteLabel);
-            var stored = BuildRecord(query, original, LyricsSource.Paste, community.Translation, source, cached?.LrclibId, synced);
+            var stored = BuildRecord(query, original, LyricsSource.Paste, community.Text, community.Source, cached?.LrclibId, synced);
             await _cache.UpsertAsync(stored, cancellationToken).ConfigureAwait(false);
-            return ToDisplay(query, original, community.Translation, LyricsSource.Paste, source, LyricsStatus.Ready, null, synced);
+            return ToDisplay(query, original, community.Text, LyricsSource.Paste, community.Source, LyricsStatus.Ready, null, synced);
         }
 
         return await StoreOriginalWithoutTranslationAsync(
@@ -218,56 +215,21 @@ public sealed class LyricsPipeline
         return await ResolveAsync(query, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<CommunityTranslation?> TryCommunityAsync(TrackQuery query, CancellationToken cancellationToken)
+    private static void ApplyRecovered(ProviderContext context, LyricProviderResult? hit)
     {
-        try
+        if (hit is null)
         {
-            var bahamut = await _bahamut.FindAsync(query, cancellationToken).ConfigureAwait(false);
-            if (bahamut is not null && !string.IsNullOrWhiteSpace(bahamut.Translation))
-            {
-                return bahamut;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            // Timeout / HTML change → web search.
+            return;
         }
 
-        try
+        if (!string.IsNullOrWhiteSpace(hit.SourceTitle))
         {
-            var web = await _web.FindAsync(query, cancellationToken).ConfigureAwait(false);
-            if (web is not null && !string.IsNullOrWhiteSpace(web.Translation))
-            {
-                return web;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            // Optional fallback; never AI.
+            context.Query = context.Query.WithRecovered(
+                BahamutParser.ExtractNativeTitle(hit.SourceTitle),
+                BahamutParser.ExtractNativeArtist(hit.SourceTitle));
         }
 
-        return null;
-    }
-
-    private async Task<string?> TrySyncedFromLrclibAsync(TrackQuery query, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var hit = await _lrclib.FindAsync(query, cancellationToken).ConfigureAwait(false);
-            return hit?.SyncedLyrics;
-        }
-        catch
-        {
-            return null;
-        }
+        context.Query = context.Query.WithRecovered(hit.TrackName, hit.ArtistName);
     }
 
     private async Task<LyricsDisplay> StoreOriginalWithoutTranslationAsync(
@@ -334,15 +296,6 @@ public sealed class LyricsPipeline
         Status: status,
         Message: message,
         SyncedLyrics: syncedLyrics);
-
-    private static LyricsDisplay Error(
-        TrackQuery query,
-        string? original,
-        LyricsSource originalSource,
-        string? translation,
-        LyricsSource translationSource,
-        string message,
-        string? syncedLyrics) => ToDisplay(query, original, translation, originalSource, translationSource, LyricsStatus.Error, message, syncedLyrics);
 
     private static bool IsCommunitySource(LyricsSource source) =>
         source is LyricsSource.Bahamut or LyricsSource.Web;
