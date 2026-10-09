@@ -23,18 +23,34 @@ function loadYoutubeApi() {
   return youtubeApiPromise;
 }
 
-function formatClock(ms) {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
+const WHEEL_MS = 2500;
 
-function SkipButton({ act, primary = false }) {
+function ModeWheel({ wheelMode, wheelSpin }) {
+  const turns = useRef(0);
+  const [angle, setAngle] = useState(0);
+  useEffect(() => {
+    if (!wheelSpin) {
+      turns.current = 0;
+      setAngle(0);
+      return;
+    }
+    const landing = wheelMode === "playlist" ? 90 : -90;
+    turns.current += 5;
+    setAngle(turns.current * 360 + landing);
+  }, [wheelSpin, wheelMode]);
   return (
-    <button className={primary ? "primary xl" : "skip-round"} type="button" onClick={() => act({ name: "djSkip" })}>
-      這輪跳過
-    </button>
+    <div className="wheel-wrap">
+      <div className="wheel-pointer" aria-hidden="true" />
+      <div className="wheel" style={{ transform: `rotate(${angle}deg)` }}>
+        <span className="wheel-label own" style={{ transform: `translate(-50%, -50%) rotate(${-angle}deg)` }}>
+          自行選歌
+        </span>
+        <span className="wheel-label playlist" style={{ transform: `translate(-50%, -50%) rotate(${-angle}deg)` }}>
+          貼歌單
+        </span>
+        <div className="wheel-hub" />
+      </div>
+    </div>
   );
 }
 
@@ -46,20 +62,6 @@ function NowPlaying({ song }) {
       <p className="song-title">{title}</p>
       {song?.artist ? <p className="song-artist">{song.artist}</p> : null}
     </div>
-  );
-}
-
-function Countdown({ endsAt }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, []);
-  const left = Math.max(0, (endsAt || 0) - now);
-  return (
-    <p className="countdown" aria-label={`剩下 ${formatClock(left)}`}>
-      {formatClock(left)}
-    </p>
   );
 }
 
@@ -281,7 +283,7 @@ function YoutubeDeck({ seedId, mix, onSync, onEnded }) {
         <p className="hint" data-yt-error={failed}>
           {/^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname)
             ? "YouTube 不接受 IP 網址。請改開 localhost，或用有名字的網址。"
-            : "這支影片不能在這裡播。換一個連結，或這輪跳過。"}
+            : "這支影片不能在這裡播。換一個連結。"}
         </p>
       ) : null}
       <button className="primary xl" type="button" onClick={toggle}>
@@ -499,7 +501,7 @@ function FollowDeck({ videoId, currentTime, playState }) {
             <p className="hint" data-yt-error={failed}>
               {/^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname)
                 ? "YouTube 不接受 IP 網址。請改開 localhost，或用有名字的網址。"
-                : "這支影片不能在這裡播。換一個連結，或這輪跳過。"}
+                : "這支影片不能在這裡播。換一個連結。"}
             </p>
           ) : null}
           {needsGesture ? (
@@ -537,19 +539,7 @@ function RateControls({ room, youId, act }) {
           </button>
         ))}
       </div>
-      <button
-        className={mineValue === "none" ? "primary xl" : "secondary xl"}
-        type="button"
-        disabled={locked && mineValue !== "none"}
-        onClick={() => act({ name: "djRate", value: "none" })}
-      >
-        不評
-      </button>
-      {locked ? (
-        <p className="hint">{mineValue === "none" ? "這首不評。" : "評過了。換歌可以再評。"}</p>
-      ) : (
-        <p className="hint">0 也算評過。不評不加不減。</p>
-      )}
+      {locked ? <p className="hint">評過了。換歌可以再評。</p> : <p className="hint">0 也算評過。</p>}
     </>
   );
 }
@@ -571,11 +561,11 @@ export function DjGame({ room, youId, act }) {
   }, [game.step]);
 
   useEffect(() => {
-    if (!mine || game.mode !== "playlist" || game.step !== "live" || !game.endsAt) return;
-    const left = game.endsAt - Date.now();
-    const timer = setTimeout(() => actRef.current({ name: "djTimeUp" }), Math.max(0, left) + 250);
+    if (!mine || game.step !== "pick" || !game.wheelSpin || !game.wheelMode) return undefined;
+    const mode = game.wheelMode;
+    const timer = setTimeout(() => actRef.current({ name: "djMode", mode }), WHEEL_MS);
     return () => clearTimeout(timer);
-  }, [mine, game.mode, game.step, game.endsAt, game.round]);
+  }, [mine, game.step, game.wheelSpin, game.wheelMode]);
 
   return (
     <div className="stack dj-game">
@@ -587,19 +577,22 @@ export function DjGame({ room, youId, act }) {
 
       {game.step === "pick" && (
         <section className="stack">
+          <ModeWheel wheelMode={game.wheelMode} wheelSpin={game.wheelSpin || 0} />
           {mine ? (
-            <>
-              <button className="primary xl" type="button" onClick={() => act({ name: "djMode", mode: "own" })}>
-                自行選歌
-              </button>
-              <button className="secondary xl" type="button" onClick={() => act({ name: "djMode", mode: "playlist" })}>
-                貼歌單
-              </button>
-            </>
+            <button
+              className="primary xl"
+              type="button"
+              disabled={game.wheelSpin > 0}
+              onClick={() => {
+                const mode = Math.random() < 0.5 ? "own" : "playlist";
+                act({ name: "djSpin", mode });
+              }}
+            >
+              {game.wheelSpin > 0 ? "轉盤轉著" : "轉一下"}
+            </button>
           ) : (
-            <p className="turn-line">等 {djName} 選一種播法</p>
+            <p className="turn-line">等 {djName} 轉</p>
           )}
-          <SkipButton act={act} primary={!mine} />
         </section>
       )}
 
@@ -630,11 +623,11 @@ export function DjGame({ room, youId, act }) {
               </label>
               <p className="hint">
                 {game.mode === "playlist"
-                  ? "貼你真的會開的那一首。只有這支手機會接著播推薦，大家一起看同一支，20 分鐘後停。"
+                  ? "貼你真的會開的那一首。只有這支手機會接著播推薦，大家一起看同一支，播完三首就停。"
                   : "只播這一支。大家一起看這支影片。"}
               </p>
               <button className="primary xl" type="submit">
-                {game.mode === "playlist" ? "開始，演算法播 20 分鐘" : "這首開始播"}
+                {game.mode === "playlist" ? "開始，接著播三首" : "這首開始播"}
               </button>
             </form>
           ) : (
@@ -645,7 +638,6 @@ export function DjGame({ room, youId, act }) {
               重選模式
             </button>
           )}
-          <SkipButton act={act} />
         </section>
       )}
 
@@ -669,7 +661,7 @@ function Live({ room, youId, act, mine }) {
   const playlist = game.mode === "playlist";
   return (
     <section className="stack">
-      {playlist && game.endsAt ? <Countdown endsAt={game.endsAt} /> : null}
+      {playlist ? <p className="song-count">第 {game.songCount || 1} / 3 首</p> : null}
       <NowPlaying song={game.song} />
       <p className="turn-line">大家一起看這支影片</p>
       {mine ? (
@@ -697,7 +689,6 @@ function Live({ room, youId, act, mine }) {
           {playlist ? "提前結束" : "本輪結束"}
         </button>
       )}
-      <SkipButton act={act} />
     </section>
   );
 }

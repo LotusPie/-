@@ -1,6 +1,6 @@
 const SONG_MAX = 80;
 const ARTIST_MAX = 40;
-const ROUND_MS = 20 * 60 * 1000;
+const PLAYLIST_SONGS = 3;
 
 const PLAY_STATES = new Set(["unstarted", "playing", "paused", "buffering", "ended", "cued", "error"]);
 
@@ -83,6 +83,9 @@ function freshRound(game, djId, round) {
     playState: null,
     ratings: {},
     endsAt: null,
+    songCount: 0,
+    wheelMode: null,
+    wheelSpin: 0,
   };
 }
 
@@ -139,7 +142,7 @@ export function expireDj(room, now = Date.now()) {
 function applyRating(room, playerId, value) {
   const game = room.game;
   if (playerId === game.djId) return { error: "迪爵這輪不評自己的歌。" };
-  const allowed = value === "none" || value === -2 || value === -1 || value === 0 || value === 1 || value === 2;
+  const allowed = value === -2 || value === -1 || value === 0 || value === 1 || value === 2;
   if (!allowed) return { error: "沒有這個分數。" };
   if (game.ratings[playerId] != null) return { error: "這首你評過了。" };
   game.ratings[playerId] = value;
@@ -166,6 +169,17 @@ export function handleDjAction(room, playerId, msg) {
     if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
     game.step = "pick";
     game.mode = null;
+    game.wheelMode = null;
+    game.wheelSpin = 0;
+    return { ok: true };
+  }
+
+  if (name === "djSpin") {
+    if (game.step !== "pick") return { error: "現在還不能轉。" };
+    if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
+    if (msg.mode !== "own" && msg.mode !== "playlist") return { error: "沒有這個模式。" };
+    game.wheelMode = msg.mode;
+    game.wheelSpin = (game.wheelSpin || 0) + 1;
     return { ok: true };
   }
 
@@ -190,7 +204,8 @@ export function handleDjAction(room, playerId, msg) {
     game.playState = "unstarted";
     game.ratings = {};
     game.step = "live";
-    game.endsAt = game.mode === "playlist" ? Date.now() + ROUND_MS : null;
+    game.endsAt = null;
+    game.songCount = 1;
     return { ok: true };
   }
 
@@ -201,10 +216,14 @@ export function handleDjAction(room, playerId, msg) {
     const nextId = game.mode === "playlist" ? reported : game.seedId;
     const time = currentTimeOk(msg.currentTime);
     if (nextId && nextId !== game.videoId) {
+      if (game.mode === "playlist" && game.songCount >= PLAYLIST_SONGS) {
+        return advanceDj(room, "served");
+      }
       game.videoId = nextId;
       game.ratings = {};
       game.song = { title: "", artist: "" };
       game.currentTime = time != null ? time : 0;
+      if (game.mode === "playlist") game.songCount += 1;
     } else if (time != null) {
       game.currentTime = time;
     }
@@ -234,11 +253,7 @@ export function handleDjAction(room, playerId, msg) {
     return advanceDj(room, "served");
   }
 
-  if (name === "djTimeUp") {
-    if (game.step !== "live" || game.mode !== "playlist") return { ok: true };
-    if (Date.now() + 2000 < game.endsAt) return { error: "時間還沒到。" };
-    return advanceDj(room, "served");
-  }
+  if (name === "djTimeUp") return { ok: true };
 
   return { error: "還沒有這個動作。" };
 }
