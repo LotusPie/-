@@ -98,48 +98,73 @@ export function CardDesk({ room, youId, act }) {
   }
 
   return (
-    <section className="card-desk panel">
-      <h2>目前的手牌</h2>
-      {hand.length ? (
-        <div className="card-hand">
-          {hand.map((id, index) => {
-            const spec = specOf(id);
-            return (
-              <button
-                key={`${id}-${index}`}
-                className={pending === id ? "choice on" : "choice"}
-                type="button"
-                onClick={() => choose(id)}
-              >
-                {spec?.name || id}
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="hint">還沒有牌。每 3 分鐘抽一張，手牌滿三張就跳過。也可以用分數買。</p>
-      )}
-      {pendingSpec?.needs === "mode" && (
-        <div className="card-picks">
-          <button className="secondary" type="button" onClick={() => play(pending, { mode: "own" })}>
-            自行選歌
-          </button>
-          <button className="secondary" type="button" onClick={() => play(pending, { mode: "playlist" })}>
-            貼歌單
-          </button>
-        </div>
-      )}
-      {pendingSpec && pendingSpec.needs !== "mode" && (
-        <div className="card-picks">
-          {(pendingSpec.needs === "player" ? online : others).map((player) => (
-            <button key={player.id} className="secondary" type="button" onClick={() => play(pending, { targetId: player.id })}>
-              {player.nickname}
-              {player.id === youId ? "（你）" : ""}
-            </button>
-          ))}
-          {pendingSpec.needs === "other" && others.length === 0 ? <p className="hint">現在沒有別的旅伴。</p> : null}
-        </div>
-      )}
+    <section className="card-desk">
+      <section className="deck-block">
+        <header className="deck-head">
+          <h2>目前的手牌</h2>
+          <p>{hand.length} 張</p>
+        </header>
+        {hand.length ? (
+          <div className="collect-grid">
+            {hand.map((id, index) => {
+              const spec = specOf(id);
+              const copy = CARD_COPY[id] || { short: spec?.name || id };
+              const selected = pending === id && index === hand.indexOf(id);
+              return (
+                <article className={selected ? "collect-card is-on" : "collect-card"} key={`${id}-${index}`}>
+                  <div className="collect-top">
+                    <span className="stamp">手牌</span>
+                    <span className="collect-mark">1 張</span>
+                  </div>
+                  <h3>{spec?.name || id}</h3>
+                  <p className="collect-line">{copy.short}</p>
+                  <div className="collect-actions">
+                    {selected ? (
+                      <button className="texty" type="button" onClick={() => setPending(null)}>
+                        收起
+                      </button>
+                    ) : (
+                      <button className="primary" type="button" onClick={() => choose(id)}>
+                        使用
+                      </button>
+                    )}
+                  </div>
+                  {selected && pendingSpec?.needs === "mode" ? (
+                    <div className="card-picks">
+                      <button className="secondary" type="button" onClick={() => play(pending, { mode: "own" })}>
+                        自行選歌
+                      </button>
+                      <button className="secondary" type="button" onClick={() => play(pending, { mode: "playlist" })}>
+                        貼歌單
+                      </button>
+                    </div>
+                  ) : null}
+                  {selected && pendingSpec && pendingSpec.needs !== "mode" ? (
+                    <div className="card-picks">
+                      {(pendingSpec.needs === "player" ? online : others).map((player) => (
+                        <button
+                          key={player.id}
+                          className="secondary"
+                          type="button"
+                          onClick={() => play(pending, { targetId: player.id })}
+                        >
+                          {player.nickname}
+                          {player.id === youId ? "（你）" : ""}
+                        </button>
+                      ))}
+                      {pendingSpec.needs === "other" && others.length === 0 ? (
+                        <p className="hint">現在沒有別的旅伴。</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="collect-empty hint">還沒有牌。每 3 分鐘抽一張，手牌滿三張就跳過。也可以用分數買。</p>
+        )}
+      </section>
       {cards.peek ? (
         <p className="card-note">
           你看到{cards.peek.nickname}這首打了 {signed(cards.peek.value)}
@@ -152,29 +177,37 @@ export function CardDesk({ room, youId, act }) {
           ))}
         </ul>
       ) : null}
-      <h2>牌店</h2>
-      <div className="card-shop">
-        {shop.map((card) => {
-          const copy = CARD_COPY[card.id] || { short: card.name, detail: card.name };
-          const open = detailId === card.id;
-          return (
-            <article className="shop-card" key={card.id}>
-              <p className="shop-name">{card.name}</p>
-              <p className="shop-blurb">{copy.short}</p>
-              <div className="shop-actions">
-                <button className="texty" type="button" onClick={() => setDetailId(open ? null : card.id)}>
-                  {open ? "收起" : "看詳細"}
-                </button>
-                <button className="secondary" type="button" onClick={() => act({ name: "cardBuy", card: card.id })}>
-                  買下
-                  <span className="card-cost">{card.cost} 分</span>
-                </button>
-              </div>
-              {open ? <p className="card-detail">{copy.detail}</p> : null}
-            </article>
-          );
-        })}
-      </div>
+      <section className="deck-block">
+        <header className="deck-head">
+          <h2>牌店</h2>
+          <p>用分數換一張</p>
+        </header>
+        <div className="collect-grid">
+          {shop.map((card) => {
+            const copy = CARD_COPY[card.id] || { short: card.name, detail: card.name };
+            const open = detailId === card.id;
+            return (
+              <article className={open ? "collect-card shop-card is-open" : "collect-card shop-card"} key={card.id}>
+                <div className="collect-top">
+                  <span className="stamp">牌店</span>
+                  <span className="collect-mark">{card.cost} 分</span>
+                </div>
+                <h3>{card.name}</h3>
+                <p className="collect-line">{copy.short}</p>
+                <div className="collect-actions">
+                  <button className="texty" type="button" onClick={() => setDetailId(open ? null : card.id)}>
+                    {open ? "收起" : "看詳細"}
+                  </button>
+                  <button className="secondary" type="button" onClick={() => act({ name: "cardBuy", card: card.id })}>
+                    買下
+                  </button>
+                </div>
+                {open ? <p className="card-detail">{copy.detail}</p> : null}
+              </article>
+            );
+          })}
+        </div>
+      </section>
     </section>
   );
 }
