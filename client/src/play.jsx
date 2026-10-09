@@ -159,7 +159,7 @@ export function Lobby({ room, youId, onStart, onLeave }) {
     <div className="stack">
       <section className="panel">
         <h2>車上主遊戲</h2>
-        <p className="hint">聲音只從本輪迪爵的手機出來。其他人看現在這首、評分。駕駛或睡著，誰都可以這輪跳過。</p>
+        <p className="hint">大家一起看同一支影片，其他人評分。駕駛或睡著，誰都可以這輪跳過。</p>
       </section>
       <button className="game-choice dj" type="button" onClick={() => onStart("dj")}>
         <span className="kicker">乘客玩</span>

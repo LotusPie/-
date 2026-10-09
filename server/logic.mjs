@@ -610,6 +610,7 @@ export function serialize(room, viewerId) {
           song: game.song || null,
           seedId: game.seedId || null,
           videoId: game.videoId || null,
+          currentTime: game.currentTime ?? null,
           playState: game.playState || null,
           endsAt: game.endsAt || null,
           ratings: game.ratings || {},

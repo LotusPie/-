@@ -34,6 +34,13 @@ function videoIdOk(id) {
   return /^[A-Za-z0-9_-]{11}$/.test(id || "") ? id : null;
 }
 
+function currentTimeOk(value) {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 24 * 60 * 60) return null;
+  return Math.round(n * 10) / 10;
+}
+
 export function parseYoutubeVideoId(input) {
   const text = String(input ?? "").trim();
   if (!text || text.length > 500) return null;
@@ -71,6 +78,7 @@ function freshRound(game, djId, round) {
     served: game?.served || [],
     seedId: null,
     videoId: null,
+    currentTime: 0,
     song: null,
     playState: null,
     ratings: {},
@@ -177,6 +185,7 @@ export function handleDjAction(room, playerId, msg) {
     if (!videoId) return { error: "貼一個 YouTube 或 YouTube Music 的歌曲連結。" };
     game.seedId = videoId;
     game.videoId = videoId;
+    game.currentTime = 0;
     game.song = { title: "", artist: "" };
     game.playState = "unstarted";
     game.ratings = {};
@@ -187,13 +196,17 @@ export function handleDjAction(room, playerId, msg) {
 
   if (name === "djSync") {
     if (game.step !== "live") return { ok: true };
-    if (playerId !== game.djId) return { error: "只有本輪迪爵的裝置會播放。" };
+    if (playerId !== game.djId) return { error: "只有本輪迪爵的裝置會對時間。" };
     const reported = videoIdOk(msg.videoId) || game.videoId;
     const nextId = game.mode === "playlist" ? reported : game.seedId;
+    const time = currentTimeOk(msg.currentTime);
     if (nextId && nextId !== game.videoId) {
       game.videoId = nextId;
       game.ratings = {};
       game.song = { title: "", artist: "" };
+      game.currentTime = time != null ? time : 0;
+    } else if (time != null) {
+      game.currentTime = time;
     }
     const title = clip(msg.title, SONG_MAX);
     const artist = clip(msg.artist, ARTIST_MAX);

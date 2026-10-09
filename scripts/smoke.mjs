@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { promptDeck, vibeDeck, scoreDeck } from "../server/decks.mjs";
 import { expireDj, parseYoutubeVideoId } from "../server/dj.mjs";
+import { expectedPlayhead, planFollow } from "../client/src/watch-sync.js";
 import {
   applyAction,
   createPlayerRoom,
@@ -58,6 +59,7 @@ function testDecksAndCopy() {
     "client/src/App.jsx",
     "client/src/play.jsx",
     "client/src/dj.jsx",
+    "client/src/watch-sync.js",
     "client/src/useRoom.js",
     "server/dj.mjs",
   ];
@@ -218,10 +220,31 @@ function testDj() {
   assert.equal(room.game.videoId, "M7lc1UVf-VE");
   assert.equal(room.game.endsAt, null);
   assert.equal(
-    applyAction(room, b, { name: "djSync", videoId: "M7lc1UVf-VE", title: "晴天", artist: "周杰倫", playState: "playing" }).ok,
+    applyAction(room, b, {
+      name: "djSync",
+      videoId: "M7lc1UVf-VE",
+      title: "晴天",
+      artist: "周杰倫",
+      playState: "playing",
+      currentTime: 12.44,
+    }).ok,
     true,
   );
   assert.equal(room.game.song.title, "晴天");
+  assert.equal(room.game.currentTime, 12.4);
+  assert.equal(serialize(room, a).game.currentTime, 12.4);
+  assert.equal(
+    applyAction(room, b, { name: "djSync", videoId: "jNQXAC9IVRw", playState: "playing", currentTime: 3 }).ok,
+    true,
+  );
+  assert.equal(room.game.videoId, "M7lc1UVf-VE");
+  assert.equal(room.game.currentTime, 3);
+  assert.equal(
+    applyAction(room, b, { name: "djSync", videoId: "M7lc1UVf-VE", playState: "paused", currentTime: -5 }).ok,
+    true,
+  );
+  assert.equal(room.game.playState, "paused");
+  assert.equal(room.game.currentTime, 3);
   assert.match(applyAction(room, a, { name: "djSync", videoId: "M7lc1UVf-VE", title: "假的", playState: "playing" }).error, /只有本輪迪爵/);
   assert.match(applyAction(room, b, { name: "djRate", value: 2 }).error, /不評自己/);
   assert.equal(applyAction(room, a, { name: "djRate", value: 0 }).ok, true);
@@ -253,10 +276,12 @@ function testDj() {
       title: "下一首",
       artist: "別人",
       playState: "playing",
+      currentTime: 8.5,
     }).ok,
     true,
   );
   assert.equal(room.game.videoId, "jNQXAC9IVRw");
+  assert.equal(room.game.currentTime, 8.5);
   assert.equal(room.game.song.title, "下一首");
   assert.equal(room.game.ratings[b], undefined);
   assert.equal(applyAction(room, b, { name: "djRate", value: 1 }).ok, true);
@@ -439,8 +464,12 @@ async function testServer() {
       title: "晴天",
       artist: "周杰倫",
       playState: "playing",
+      currentTime: 12.4,
     });
-    await waitUntil(firstListener.states, (msg) => msg.room?.game?.song?.title === "晴天");
+    await waitUntil(
+      firstListener.states,
+      (msg) => msg.room?.game?.song?.title === "晴天" && msg.room?.game?.currentTime === 12.4,
+    );
     firstListener.send({ type: "action", name: "djRate", value: -1 });
     await waitUntil(firstDj.states, (msg) => {
       const dj = msg.room?.players?.find((item) => item.id === djStart.room.game.djId);
@@ -505,8 +534,135 @@ async function testServer() {
   }
 }
 
+function testWatchSync() {
+  const now = 10_000;
+  const clock = {
+    videoId: "M7lc1UVf-VE",
+    currentTime: 20,
+    playState: "playing",
+    receivedAt: now - 1000,
+  };
+  assert.equal(expectedPlayhead(clock, now), 21);
+  assert.equal(expectedPlayhead({ ...clock, playState: "paused" }, now), 20);
+  assert.equal(expectedPlayhead({ ...clock, playState: "buffering" }, now), 20);
+
+  const close = planFollow({
+    localVideoId: clock.videoId,
+    localTime: 21.2,
+    localState: 1,
+    clock,
+    now,
+    unlocked: true,
+    lastSeekAt: 0,
+    autoplayTriedAt: now - 5000,
+  });
+  assert.equal(close.type, "play");
+  assert.equal(close.seek, false);
+  assert.equal(close.needsGesture, false);
+
+  const drifted = planFollow({
+    localVideoId: clock.videoId,
+    localTime: 10,
+    localState: 1,
+    clock,
+    now,
+    unlocked: true,
+    lastSeekAt: 0,
+    autoplayTriedAt: now - 5000,
+  });
+  assert.equal(drifted.seek, true);
+  assert.equal(drifted.seconds, 21);
+
+  const cooling = planFollow({
+    localVideoId: clock.videoId,
+    localTime: 10,
+    localState: 1,
+    clock,
+    now,
+    unlocked: true,
+    lastSeekAt: now - 500,
+    autoplayTriedAt: now - 5000,
+  });
+  assert.equal(cooling.seek, false);
+
+  const paused = planFollow({
+    localVideoId: clock.videoId,
+    localTime: 10,
+    localState: 1,
+    clock: { ...clock, playState: "paused", currentTime: 30 },
+    now,
+    unlocked: true,
+    lastSeekAt: 0,
+  });
+  assert.equal(paused.type, "pause");
+  assert.equal(paused.seek, true);
+  assert.equal(paused.seconds, 30);
+
+  const switched = planFollow({
+    localVideoId: "dQw4w9WgXcQ",
+    localTime: 1,
+    localState: 1,
+    clock,
+    now,
+    unlocked: true,
+    lastSeekAt: 0,
+  });
+  assert.equal(switched.type, "load");
+  assert.equal(switched.videoId, clock.videoId);
+  assert.equal(switched.needsGesture, false);
+
+  const blocked = planFollow({
+    localVideoId: "dQw4w9WgXcQ",
+    localTime: 1,
+    localState: -1,
+    clock,
+    now,
+    unlocked: false,
+    lastSeekAt: 0,
+    autoplayTriedAt: now - 5000,
+  });
+  assert.equal(blocked.type, "cue");
+  assert.equal(blocked.needsGesture, true);
+
+  const gesture = planFollow({
+    localVideoId: clock.videoId,
+    localTime: 21,
+    localState: -1,
+    clock,
+    now,
+    unlocked: false,
+    lastSeekAt: 0,
+    autoplayTriedAt: now - 5000,
+  });
+  assert.equal(gesture.type, "gesture");
+  assert.equal(gesture.needsGesture, true);
+
+  const grace = planFollow({
+    localVideoId: clock.videoId,
+    localTime: 21,
+    localState: -1,
+    clock,
+    now,
+    unlocked: false,
+    lastSeekAt: 0,
+    autoplayTriedAt: now - 200,
+  });
+  assert.equal(grace.type, "wait");
+  assert.equal(grace.needsGesture, false);
+
+  const dj = fs.readFileSync(path.join(root, "client/src/dj.jsx"), "utf8");
+  const play = fs.readFileSync(path.join(root, "client/src/play.jsx"), "utf8");
+  assert.equal(dj.includes("聲音從這支手機出來"), false);
+  assert.equal(dj.includes("只播這一支。大家一起看這支影片。"), true);
+  assert.equal(dj.includes("開始一起看"), true);
+  assert.equal(dj.includes('if (mix) params.set("list"'), true);
+  assert.equal(play.includes("聲音只從本輪迪爵的手機出來"), false);
+  assert.equal(play.includes("大家一起看同一支影片"), true);
+}
+
 try {
   testDecksAndCopy();
+  testWatchSync();
   testLogic();
   await testServer();
   console.log("smoke ok");

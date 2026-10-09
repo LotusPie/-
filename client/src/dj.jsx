@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Ranking, nameOf } from "./play.jsx";
+import { expectedPlayhead, planFollow } from "./watch-sync.js";
 
 const RATINGS = [-2, -1, 0, 1, 2];
-const PLAY_WORD = {
-  playing: "播放中",
-  paused: "暫停",
-  ended: "播完了",
-  buffering: "載入中",
-  error: "這支影片播不起來",
-};
 
 let youtubeApiPromise;
 
@@ -69,12 +63,78 @@ function Countdown({ endsAt }) {
   );
 }
 
+function createYoutubeFrame(videoId, { mix = false } = {}) {
+  const params = new URLSearchParams({
+    enablejsapi: "1",
+    origin: window.location.origin,
+    playsinline: "1",
+    rel: "0",
+    autoplay: "1",
+  });
+  if (mix) params.set("list", `RD${videoId}`);
+  const iframe = document.createElement("iframe");
+  iframe.src = `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+  iframe.title = "YouTube";
+  iframe.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+  iframe.referrerPolicy = "strict-origin-when-cross-origin";
+  iframe.setAttribute("allowfullscreen", "");
+  return iframe;
+}
+
+function readPlayerState(target) {
+  try {
+    return target.getPlayerState?.();
+  } catch {
+    return -1;
+  }
+}
+
+function readPlayerVideoId(target) {
+  try {
+    return target.getVideoData?.()?.video_id || "";
+  } catch {
+    return "";
+  }
+}
+
+function readPlayerTime(target) {
+  try {
+    const time = target.getCurrentTime?.();
+    return Number.isFinite(time) ? time : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function playerIsAudible(target) {
+  try {
+    if (target.isMuted?.()) return false;
+    const volume = target.getVolume?.();
+    if (Number.isFinite(volume) && volume === 0) return false;
+  } catch {
+    return true;
+  }
+  return true;
+}
+
+function unmute(target) {
+  try {
+    target.unMute?.();
+    target.setVolume?.(100);
+  } catch {
+    /* already gone */
+  }
+}
+
 function YoutubeDeck({ seedId, mix, onSync, onEnded }) {
   const hostRef = useRef(null);
   const playerRef = useRef(null);
   const onSyncRef = useRef(onSync);
   const onEndedRef = useRef(onEnded);
   const lastKey = useRef("");
+  const lastSentAt = useRef(0);
+  const lastSentTime = useRef(0);
+  const lastPlayState = useRef("");
   const endedSent = useRef(false);
   const [localState, setLocalState] = useState("unstarted");
   const [failed, setFailed] = useState("");
@@ -86,21 +146,12 @@ function YoutubeDeck({ seedId, mix, onSync, onEnded }) {
     let poll;
     const mount = hostRef.current;
     if (!mount) return undefined;
-    const origin = window.location.origin;
-    const params = new URLSearchParams({
-      enablejsapi: "1",
-      origin,
-      playsinline: "1",
-      rel: "0",
-      autoplay: "1",
-    });
-    if (mix) params.set("list", `RD${seedId}`);
-    const iframe = document.createElement("iframe");
-    iframe.src = `https://www.youtube.com/embed/${seedId}?${params.toString()}`;
-    iframe.title = "YouTube";
-    iframe.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
-    iframe.referrerPolicy = "strict-origin-when-cross-origin";
-    iframe.setAttribute("allowfullscreen", "");
+    lastKey.current = "";
+    lastSentAt.current = 0;
+    lastSentTime.current = 0;
+    lastPlayState.current = "";
+    endedSent.current = false;
+    const iframe = createYoutubeFrame(seedId, { mix });
     mount.replaceChildren(iframe);
 
     loadYoutubeApi().then((YT) => {
@@ -134,7 +185,7 @@ function YoutubeDeck({ seedId, mix, onSync, onEnded }) {
       playerRef.current = player;
       poll = setInterval(() => {
         if (playerRef.current) push(playerRef.current);
-      }, 2000);
+      }, 500);
     });
     return () => {
       dead = true;
@@ -177,15 +228,35 @@ function YoutubeDeck({ seedId, mix, onSync, onEnded }) {
       playState = "unstarted";
     }
     setLocalState(playState);
+    let currentTime = 0;
+    try {
+      const time = target.getCurrentTime?.();
+      if (Number.isFinite(time)) currentTime = Math.round(time * 10) / 10;
+    } catch {
+      currentTime = 0;
+    }
     const payload = {
       videoId: data.video_id || seedId,
       title: data.title || "",
       artist: data.author || "",
       playState,
+      currentTime,
     };
-    const key = JSON.stringify(payload);
-    if (key === lastKey.current) return;
-    lastKey.current = key;
+    const stateKey = JSON.stringify({
+      videoId: payload.videoId,
+      title: payload.title,
+      artist: payload.artist,
+      playState,
+    });
+    const now = Date.now();
+    const elapsed = lastPlayState.current === "playing" ? (now - lastSentAt.current) / 1000 : 0;
+    const jumped = Math.abs(currentTime - lastSentTime.current - elapsed) > 1;
+    const heartbeat = now - lastSentAt.current > 2000;
+    if (stateKey === lastKey.current && !jumped && !heartbeat) return;
+    lastKey.current = stateKey;
+    lastSentAt.current = now;
+    lastSentTime.current = currentTime;
+    lastPlayState.current = playState;
     onSyncRef.current(payload);
   }
 
@@ -216,6 +287,175 @@ function YoutubeDeck({ seedId, mix, onSync, onEnded }) {
       <button className="primary xl" type="button" onClick={toggle}>
         {playing ? "暫停" : "播放"}
       </button>
+    </div>
+  );
+}
+
+function FollowDeck({ videoId, currentTime, playState }) {
+  const hostRef = useRef(null);
+  const playerRef = useRef(null);
+  const unlockedRef = useRef(false);
+  const readyRef = useRef(false);
+  const lastSeekRef = useRef(0);
+  const requestedRef = useRef("");
+  const autoplayTriedAt = useRef(0);
+  const applyRef = useRef(() => {});
+  const initialIdRef = useRef(videoId);
+  const [needsGesture, setNeedsGesture] = useState(false);
+  const [failed, setFailed] = useState("");
+  const clockRef = useRef({
+    videoId,
+    currentTime: Number(currentTime) || 0,
+    playState,
+    receivedAt: Date.now(),
+  });
+  const sampleKey = `${videoId}|${playState}|${currentTime}`;
+  const sampleRef = useRef("");
+  if (sampleRef.current !== sampleKey) {
+    sampleRef.current = sampleKey;
+    clockRef.current = {
+      videoId,
+      currentTime: Number(currentTime) || 0,
+      playState,
+      receivedAt: Date.now(),
+    };
+  }
+
+  function applyPlan() {
+    const player = playerRef.current;
+    if (!player || !readyRef.current) return;
+    const plan = planFollow({
+      localVideoId: readPlayerVideoId(player),
+      localTime: readPlayerTime(player),
+      localState: readPlayerState(player),
+      clock: clockRef.current,
+      now: Date.now(),
+      unlocked: unlockedRef.current,
+      lastSeekAt: lastSeekRef.current,
+      autoplayTriedAt: autoplayTriedAt.current,
+    });
+    const audible = playerIsAudible(player);
+    if (plan.markUnlocked && audible) unlockedRef.current = true;
+    const gesture = unlockedRef.current ? false : plan.needsGesture || (readPlayerState(player) === 1 && !audible);
+    setNeedsGesture(gesture);
+    if (unlockedRef.current) unmute(player);
+    try {
+      if (plan.type === "load" || plan.type === "cue") {
+        const request = `${plan.type}:${plan.videoId}`;
+        if (requestedRef.current === request && Date.now() - lastSeekRef.current < 2000) return;
+        requestedRef.current = request;
+        lastSeekRef.current = Date.now();
+        if (plan.type === "load") player.loadVideoById(plan.videoId, plan.seconds);
+        else player.cueVideoById(plan.videoId, plan.seconds);
+        return;
+      }
+      if (plan.seek) {
+        player.seekTo(plan.seconds, true);
+        lastSeekRef.current = Date.now();
+      }
+      if (plan.type === "pause") {
+        const state = readPlayerState(player);
+        if (state === 1 || state === 3) player.pauseVideo();
+      } else if (plan.play) {
+        player.playVideo();
+      }
+    } catch {
+      /* player is going away */
+    }
+  }
+  applyRef.current = applyPlan;
+
+  useEffect(() => {
+    let dead = false;
+    let poll;
+    const mount = hostRef.current;
+    const openingId = initialIdRef.current;
+    if (!mount || !openingId) return undefined;
+    const iframe = createYoutubeFrame(openingId);
+    mount.replaceChildren(iframe);
+    loadYoutubeApi().then((YT) => {
+      if (dead) return;
+      const player = new YT.Player(iframe, {
+        events: {
+          onReady: (event) => {
+            playerRef.current = event.target;
+            readyRef.current = true;
+            autoplayTriedAt.current = Date.now();
+            try {
+              event.target.playVideo();
+            } catch {
+              /* 需要按開始一起看 */
+            }
+            applyRef.current();
+          },
+          onStateChange: () => applyRef.current(),
+          onError: (event) => setFailed(String(event?.data ?? "")),
+        },
+      });
+      playerRef.current = player;
+      poll = setInterval(() => applyRef.current(), 1000);
+    });
+    return () => {
+      dead = true;
+      clearInterval(poll);
+      readyRef.current = false;
+      const current = playerRef.current;
+      playerRef.current = null;
+      try {
+        current?.destroy?.();
+      } catch {
+        /* already gone */
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    applyRef.current();
+  }, [sampleKey]);
+
+  function startTogether() {
+    const player = playerRef.current;
+    unlockedRef.current = true;
+    setNeedsGesture(false);
+    if (!player) return;
+    unmute(player);
+    const clock = clockRef.current;
+    const seconds = expectedPlayhead(clock, Date.now());
+    try {
+      const reported = readPlayerVideoId(player);
+      if (reported && reported !== clock.videoId) {
+        requestedRef.current = `load:${clock.videoId}`;
+        lastSeekRef.current = Date.now();
+        player.loadVideoById(clock.videoId, seconds);
+      } else {
+        if (Math.abs(readPlayerTime(player) - seconds) > 0.4) {
+          player.seekTo(seconds, true);
+          lastSeekRef.current = Date.now();
+        }
+        player.playVideo();
+      }
+    } catch {
+      /* player is going away */
+    }
+  }
+
+  return (
+    <div className="stack">
+      <div className="yt-frame">
+        <div ref={hostRef} />
+      </div>
+      {failed ? (
+        <p className="hint" data-yt-error={failed}>
+          {/^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname)
+            ? "YouTube 不接受 IP 網址。請改開 localhost，或用有名字的網址。"
+            : "這支影片不能在這裡播。換一個連結，或這輪跳過。"}
+        </p>
+      ) : null}
+      {needsGesture ? (
+        <button className="primary xl together" type="button" onClick={startTogether}>
+          開始一起看
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -271,8 +511,8 @@ export function DjGame({ room, youId, act }) {
   }, [game.round, game.step]);
 
   useEffect(() => {
-    if (mine && (game.step === "enter" || game.step === "live")) loadYoutubeApi();
-  }, [mine, game.step]);
+    if (game.step === "enter" || game.step === "live") loadYoutubeApi();
+  }, [game.step]);
 
   useEffect(() => {
     if (!mine || game.mode !== "playlist" || game.step !== "live" || !game.endsAt) return;
@@ -334,15 +574,15 @@ export function DjGame({ room, youId, act }) {
               </label>
               <p className="hint">
                 {game.mode === "playlist"
-                  ? "貼你真的會開的那一首。這支手機會接著播推薦，20 分鐘後停。"
-                  : "只播這一支。聲音從這支手機出來。"}
+                  ? "貼你真的會開的那一首。只有這支手機會接著播推薦，大家一起看同一支，20 分鐘後停。"
+                  : "只播這一支。大家一起看這支影片。"}
               </p>
               <button className="primary xl" type="submit">
                 {game.mode === "playlist" ? "開始，演算法播 20 分鐘" : "這首開始播"}
               </button>
             </form>
           ) : (
-            <p className="hint">{djName} 正在貼連結。聲音等一下從他的手機出來。</p>
+            <p className="hint">{djName} 正在貼連結。等一下大家一起看這支影片。</p>
           )}
           {mine && (
             <button className="texty" type="button" onClick={() => act({ name: "djBack" })}>
@@ -354,7 +594,7 @@ export function DjGame({ room, youId, act }) {
       )}
 
       {game.step === "live" && (
-        <Live room={room} youId={youId} act={act} mine={mine} djName={djName} />
+        <Live room={room} youId={youId} act={act} mine={mine} />
       )}
 
       <section className="panel">
@@ -368,13 +608,14 @@ export function DjGame({ room, youId, act }) {
   );
 }
 
-function Live({ room, youId, act, mine, djName }) {
+function Live({ room, youId, act, mine }) {
   const game = room.game;
   const playlist = game.mode === "playlist";
   return (
     <section className="stack">
       {playlist && game.endsAt ? <Countdown endsAt={game.endsAt} /> : null}
       <NowPlaying song={game.song} />
+      <p className="turn-line">大家一起看這支影片</p>
       {mine ? (
         <YoutubeDeck
           seedId={game.seedId}
@@ -383,10 +624,11 @@ function Live({ room, youId, act, mine, djName }) {
           onEnded={() => act({ name: "djEnded" })}
         />
       ) : (
-        <p className="turn-line">
-          聲音在 {djName} 的手機
-          {PLAY_WORD[game.playState] ? ` · ${PLAY_WORD[game.playState]}` : ""}
-        </p>
+        <FollowDeck
+          videoId={game.videoId}
+          currentTime={game.currentTime ?? 0}
+          playState={game.playState || "unstarted"}
+        />
       )}
       {mine ? (
         <p className="turn-line">等大家用自己的口味評這首</p>
