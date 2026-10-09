@@ -1,6 +1,7 @@
+import { clearRoundCards, clearSongCards, skipPassed, songLimit, takeForcedMode, takeLobbyQueue } from "./cards.mjs";
+
 const SONG_MAX = 80;
 const ARTIST_MAX = 40;
-const PLAYLIST_SONGS = 3;
 
 const PLAY_STATES = new Set(["unstarted", "playing", "paused", "buffering", "ended", "cued", "error"]);
 
@@ -67,8 +68,8 @@ export function parseYoutubeVideoId(input) {
   return null;
 }
 
-function freshRound(game, djId, round) {
-  return {
+function freshRound(room, game, djId, round) {
+  const next = {
     kind: "dj",
     round,
     step: "pick",
@@ -86,18 +87,27 @@ function freshRound(game, djId, round) {
     songCount: 0,
     wheelMode: null,
     wheelSpin: 0,
+    extra: false,
+    extraSpins: 0,
+    shield: false,
+    blockVideoId: null,
+    doubles: {},
+    forcedMode: null,
+    nextDjId: null,
   };
+  if (!game) takeLobbyQueue(room, next);
+  return next;
 }
 
 export function beginDj(room) {
   const first = active(room)[0];
   if (!first) return { error: "現在沒有人在線上。" };
   room.phase = "playing";
-  room.game = freshRound(null, first.id, 1);
+  room.game = freshRound(room, null, first.id, 1);
   return { ok: true };
 }
 
-function advanceDj(room, mark) {
+export function advanceDj(room, mark) {
   const game = room.game;
   const online = active(room).map((player) => player.id);
   if (!online.length) return { error: "現在沒有人在線上。" };
@@ -122,7 +132,10 @@ function advanceDj(room, mark) {
       break;
     }
   }
-  room.game = freshRound(game, next, game.round + 1);
+  const named = game.nextDjId && online.includes(game.nextDjId) ? game.nextDjId : null;
+  next = named || skipPassed(room, next, online, pool);
+  clearRoundCards(room);
+  room.game = freshRound(room, game, next, game.round + 1);
   return { ok: true };
 }
 
@@ -142,14 +155,21 @@ export function expireDj(room, now = Date.now()) {
 function applyRating(room, playerId, value) {
   const game = room.game;
   if (playerId === game.djId) return { error: "迪爵這輪不評自己的歌。" };
-  const allowed = value === -2 || value === -1 || value === 0 || value === 1 || value === 2;
+  const allowed = value === -2 || value === -1 || value === 1 || value === 2;
   if (!allowed) return { error: "沒有這個分數。" };
   if (game.ratings[playerId] != null) return { error: "這首你評過了。" };
-  game.ratings[playerId] = value;
-  if (typeof value === "number") {
-    addExact(findPlayer(room, playerId), 1);
-    addExact(findPlayer(room, game.djId), value);
+  if ((value === -1 || value === -2) && game.blockVideoId && game.blockVideoId === game.videoId) {
+    return { error: "這一首不能打負分。" };
   }
+  game.ratings[playerId] = value;
+  addExact(findPlayer(room, playerId), 1);
+  let delta = value;
+  if (game.doubles?.[playerId] === game.videoId) {
+    delta = value * 2;
+    delete game.doubles[playerId];
+  }
+  if (delta < 0 && game.shield) delta = 0;
+  if (delta) addExact(findPlayer(room, game.djId), delta);
   return { ok: true };
 }
 
@@ -171,8 +191,11 @@ export function handleDjAction(room, playerId, msg) {
   if (name === "djSpin") {
     if (game.step !== "pick") return { error: "現在還不能轉。" };
     if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
-    if (msg.mode !== "own" && msg.mode !== "playlist") return { error: "沒有這個模式。" };
-    game.wheelMode = msg.mode;
+    if ((game.wheelSpin || 0) > 0 && !(game.extraSpins > 0)) return { error: "轉過了。" };
+    if ((game.wheelSpin || 0) > 0) game.extraSpins -= 1;
+    const mode = takeForcedMode(room, game, msg.mode);
+    if (mode !== "own" && mode !== "playlist") return { error: "沒有這個模式。" };
+    game.wheelMode = mode;
     game.wheelSpin = (game.wheelSpin || 0) + 1;
     return { ok: true };
   }
@@ -180,17 +203,21 @@ export function handleDjAction(room, playerId, msg) {
   if (name === "djMode") {
     if (game.step !== "pick") return { error: "現在還不能選模式。" };
     if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
-    if (msg.mode !== "own" && msg.mode !== "playlist") return { error: "沒有這個模式。" };
-    game.mode = msg.mode;
+    if ((game.wheelSpin || 0) > 0 && (game.extraSpins || 0) > 0) return { error: "還可以再轉一次。" };
+    const mode = takeForcedMode(room, game, msg.mode);
+    if (mode !== "own" && mode !== "playlist") return { error: "沒有這個模式。" };
+    game.mode = mode;
     game.step = "enter";
     return { ok: true };
   }
 
   if (name === "djCue") {
-    if (game.step !== "enter") return { error: "現在還不能播。" };
+    const extraCue = game.step === "live" && game.mode === "own" && game.extra && game.songCount < 2;
+    if (game.step !== "enter" && !extraCue) return { error: "現在還不能播。" };
     if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
     const videoId = parseYoutubeVideoId(msg.url);
     if (!videoId) return { error: "貼一個 YouTube 或 YouTube Music 的歌曲連結。" };
+    clearSongCards(room, game);
     game.seedId = videoId;
     game.videoId = videoId;
     game.currentTime = 0;
@@ -199,7 +226,7 @@ export function handleDjAction(room, playerId, msg) {
     game.ratings = {};
     game.step = "live";
     game.endsAt = null;
-    game.songCount = 1;
+    game.songCount = game.songCount > 0 ? game.songCount + 1 : 1;
     return { ok: true };
   }
 
@@ -210,9 +237,10 @@ export function handleDjAction(room, playerId, msg) {
     const nextId = game.mode === "playlist" ? reported : game.seedId;
     const time = currentTimeOk(msg.currentTime);
     if (nextId && nextId !== game.videoId) {
-      if (game.mode === "playlist" && game.songCount >= PLAYLIST_SONGS) {
+      if (game.mode === "playlist" && game.songCount >= songLimit(game)) {
         return advanceDj(room, "served");
       }
+      clearSongCards(room, game);
       game.videoId = nextId;
       game.ratings = {};
       game.song = { title: "", artist: "" };
@@ -238,6 +266,12 @@ export function handleDjAction(room, playerId, msg) {
   if (name === "djEnded") {
     if (game.step !== "live" || game.mode !== "own") return { ok: true };
     if (playerId !== game.djId) return { error: "這輪由迪爵結束。" };
+    if (game.extra && game.songCount < 2) {
+      game.step = "enter";
+      game.ratings = {};
+      clearSongCards(room, game);
+      return { ok: true };
+    }
     return advanceDj(room, "served");
   }
 

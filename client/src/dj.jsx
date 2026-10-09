@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Ranking, nameOf } from "./play.jsx";
+import { nameOf } from "./play.jsx";
 import { expectedPlayhead, planFollow } from "./watch-sync.js";
 
-const RATINGS = [-2, -1, 0, 1, 2];
+const RATINGS = [-2, -1, 1, 2];
 
 let youtubeApiPromise;
 
@@ -539,7 +539,7 @@ function RateControls({ room, youId, act }) {
           </button>
         ))}
       </div>
-      {locked ? <p className="hint">評過了。換歌可以再評。</p> : <p className="hint">0 也算評過。</p>}
+      {locked ? <p className="hint">評過了。換歌可以再評。</p> : <p className="hint">評分是 -2、-1、+1、+2。</p>}
     </>
   );
 }
@@ -562,13 +562,14 @@ export function DjGame({ room, youId, act }) {
 
   useEffect(() => {
     if (!mine || game.step !== "pick" || !game.wheelSpin || !game.wheelMode) return undefined;
+    if ((game.extraSpins || 0) > 0) return undefined;
     const mode = game.wheelMode;
     const reduce =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timer = setTimeout(() => actRef.current({ name: "djMode", mode }), reduce ? 0 : WHEEL_MS);
     return () => clearTimeout(timer);
-  }, [mine, game.step, game.wheelSpin, game.wheelMode]);
+  }, [mine, game.step, game.wheelSpin, game.wheelMode, game.extraSpins]);
 
   return (
     <div className="dj-layout dj-game">
@@ -586,13 +587,13 @@ export function DjGame({ room, youId, act }) {
             <button
               className="primary xl"
               type="button"
-              disabled={game.wheelSpin > 0}
+              disabled={(game.wheelSpin || 0) > 0 && !(game.extraSpins > 0)}
               onClick={() => {
                 const mode = Math.random() < 0.5 ? "own" : "playlist";
                 act({ name: "djSpin", mode });
               }}
             >
-              {game.wheelSpin > 0 ? "轉盤轉著" : "轉一下"}
+              {(game.wheelSpin || 0) > 0 && game.extraSpins > 0 ? "再轉一次" : (game.wheelSpin || 0) > 0 ? "轉盤轉著" : "轉一下"}
             </button>
           ) : (
             <p className="turn-line">等 {djName} 轉</p>
@@ -627,11 +628,15 @@ export function DjGame({ room, youId, act }) {
               </label>
               <p className="hint">
                 {game.mode === "playlist"
-                  ? "貼你真的會開的那一首。只有這支手機會接著播推薦，大家一起看同一支，播完三首就停。"
-                  : "只播這一支。大家一起看這支影片。"}
+                  ? game.extra
+                    ? "貼你真的會開的那一首。只有這支手機會接著播推薦，大家一起看同一支，播完四首就停。"
+                    : "貼你真的會開的那一首。只有這支手機會接著播推薦，大家一起看同一支，播完三首就停。"
+                  : game.extra
+                    ? "這一輪可以再貼一支。只播完這兩支。大家一起看這支影片。"
+                    : "只播這一支。大家一起看這支影片。"}
               </p>
               <button className="primary xl" type="submit">
-                {game.mode === "playlist" ? "開始，接著播三首" : "這首開始播"}
+                {game.mode === "playlist" ? (game.extra ? "開始，接著播四首" : "開始，接著播三首") : game.songCount > 0 ? "再播這一首" : "這首開始播"}
               </button>
             </form>
           ) : (
@@ -645,10 +650,6 @@ export function DjGame({ room, youId, act }) {
       )}
       </div>
 
-      <section className="panel scoreboard">
-        <h2>積分榜</h2>
-        <Ranking ranking={room.ranking} youId={youId} />
-      </section>
       <button className="texty dj-back" type="button" onClick={() => act({ name: "lobby" })}>
         回房間
       </button>
@@ -656,12 +657,46 @@ export function DjGame({ room, youId, act }) {
   );
 }
 
+function ExtraCue({ act }) {
+  const [url, setUrl] = useState("");
+  return (
+    <form
+      className="stack"
+      onSubmit={(event) => {
+        event.preventDefault();
+        act({ name: "djCue", url });
+      }}
+    >
+      <label>
+        再貼一支
+        <input
+          className="song-input"
+          type="url"
+          inputMode="url"
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
+          maxLength={500}
+          placeholder="https://music.youtube.com/watch?v="
+          required
+          enterKeyHint="done"
+        />
+      </label>
+      <button className="secondary" type="submit">
+        再播這一首
+      </button>
+    </form>
+  );
+}
+
 function Live({ room, youId, act, mine }) {
   const game = room.game;
   const playlist = game.mode === "playlist";
+  const limit = game.songLimit || (playlist ? 3 : 2);
+  const showCount = playlist || (game.mode === "own" && game.extra);
+  const canCueExtra = mine && game.mode === "own" && game.extra && (game.songCount || 1) < 2;
   return (
     <section className="stack">
-      {playlist ? <p className="song-count">第 {game.songCount || 1} / 3 首</p> : null}
+      {showCount ? <p className="song-count">第 {game.songCount || 1} / {limit} 首</p> : null}
       <NowPlaying song={game.song} />
       <p className="turn-line">大家一起看這支影片</p>
       {mine ? (
@@ -684,6 +719,7 @@ function Live({ room, youId, act, mine }) {
         <RateControls room={room} youId={youId} act={act} />
       )}
       {mine ? <p className="rule-line">幫別人評分，自己 +1</p> : null}
+      {canCueExtra ? <ExtraCue act={act} /> : null}
       {mine && (
         <button className="secondary xl" type="button" onClick={() => act({ name: "djFinish" })}>
           {playlist ? "提前結束" : "本輪結束"}

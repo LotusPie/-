@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { promptDeck, vibeDeck, scoreDeck } from "../server/decks.mjs";
 import { expireDj, parseYoutubeVideoId } from "../server/dj.mjs";
+import { tickCardDraws } from "../server/cards.mjs";
 import { expectedPlayhead, planFollow } from "../client/src/watch-sync.js";
 import {
   applyAction,
@@ -58,9 +59,11 @@ function testDecksAndCopy() {
     "client/src/App.jsx",
     "client/src/play.jsx",
     "client/src/dj.jsx",
+    "client/src/cards.jsx",
     "client/src/watch-sync.js",
     "client/src/useRoom.js",
     "server/dj.mjs",
+    "server/cards.mjs",
   ];
   for (const file of files) {
     const text = fs.readFileSync(path.join(root, file), "utf8");
@@ -97,6 +100,7 @@ function testLogic() {
   assert.equal(room.game, null);
   assert.equal(scoreOf(room, a), 0);
   testDj();
+  testCards();
 }
 
 function testDj() {
@@ -164,15 +168,19 @@ function testDj() {
   assert.equal(room.game.currentTime, 3);
   assert.match(applyAction(room, a, { name: "djSync", videoId: "M7lc1UVf-VE", title: "假的", playState: "playing" }).error, /只有本輪迪爵/);
   assert.match(applyAction(room, b, { name: "djRate", value: 2 }).error, /不評自己/);
-  assert.equal(applyAction(room, a, { name: "djRate", value: 0 }).ok, true);
-  assert.equal(scoreOf(room, a), 1);
+  assert.match(applyAction(room, a, { name: "djRate", value: 0 }).error, /沒有這個分數/);
+  assert.equal(scoreOf(room, a), 0);
   assert.equal(scoreOf(room, b), 0);
+  assert.equal(room.game.ratings[a], undefined);
+  assert.equal(applyAction(room, a, { name: "djRate", value: 1 }).ok, true);
+  assert.equal(scoreOf(room, a), 1);
+  assert.equal(scoreOf(room, b), 1);
   assert.equal(room.game.step, "live");
   assert.match(applyAction(room, a, { name: "djRate", value: 2 }).error, /評過了/);
   assert.match(applyAction(room, c, { name: "djRate", value: "none" }).error, /沒有這個分數/);
   assert.equal(room.game.ratings[c], undefined);
   assert.equal(scoreOf(room, c), 0);
-  assert.equal(scoreOf(room, b), 0);
+  assert.equal(scoreOf(room, b), 1);
   assert.equal(applyAction(room, b, { name: "djEnded" }).ok, true);
   assert.equal(room.game.step, "pick");
   assert.equal(room.game.djId, c);
@@ -184,7 +192,7 @@ function testDj() {
   assert.equal(room.game.endsAt, null);
   assert.equal(room.game.songCount, 1);
   assert.equal(applyAction(room, b, { name: "djRate", value: -2 }).ok, true);
-  assert.equal(scoreOf(room, b), 1);
+  assert.equal(scoreOf(room, b), 2);
   assert.equal(scoreOf(room, c), -2);
   assert.equal(room.game.step, "live");
   assert.equal(
@@ -204,7 +212,7 @@ function testDj() {
   assert.equal(room.game.songCount, 2);
   assert.equal(room.game.ratings[b], undefined);
   assert.equal(applyAction(room, b, { name: "djRate", value: 1 }).ok, true);
-  assert.equal(scoreOf(room, b), 2);
+  assert.equal(scoreOf(room, b), 3);
   assert.equal(scoreOf(room, c), -1);
   assert.match(applyAction(room, a, { name: "djFinish" }).error, /迪爵結束/);
   assert.equal(applyAction(room, c, { name: "djFinish" }).ok, true);
@@ -254,6 +262,109 @@ function testDj() {
   applyAction(low.room, low.ids[1], { name: "djRate", value: -2 });
   assert.equal(scoreOf(low.room, low.ids[0]), -2);
   assert.equal(scoreOf(low.room, low.ids[1]), 1);
+}
+
+function testCards() {
+  const watch = "https://www.youtube.com/watch?v=M7lc1UVf-VE";
+  const poor = freshRoom(["阿凱", "小魚"]);
+  assert.match(applyAction(poor.room, poor.ids[0], { name: "cardBuy", card: "peek" }).error, /不能買/);
+  poor.room.players[0].score = -2;
+  assert.match(applyAction(poor.room, poor.ids[0], { name: "cardBuy", card: "peek" }).error, /不能買/);
+  assert.equal(poor.room.cards.hands[poor.ids[0]]?.length || 0, 0);
+
+  const swap = freshRoom(["阿凱", "小魚"]);
+  const [swapA, swapB] = swap.ids;
+  swap.room.players.find((player) => player.id === swapA).score = 4;
+  swap.room.players.find((player) => player.id === swapB).score = -5;
+  swap.room.cards.hands[swapA] = ["swap"];
+  assert.deepEqual(serialize(swap.room, swapB).cards.hand, []);
+  assert.deepEqual(serialize(swap.room, swapA).cards.hand, ["swap"]);
+  assert.equal(applyAction(swap.room, swapA, { name: "cardPlay", card: "swap", targetId: swapB }).ok, true);
+  assert.equal(scoreOf(swap.room, swapA), -5);
+  assert.equal(scoreOf(swap.room, swapB), 4);
+  assert.deepEqual(swap.room.cards.hands[swapA], []);
+
+  const hide = freshRoom(["阿凱", "小魚"]);
+  hide.room.players[0].score = 8;
+  hide.room.cards.hands[hide.ids[0]] = ["hide"];
+  assert.equal(applyAction(hide.room, hide.ids[0], { name: "cardPlay", card: "hide" }).ok, true);
+  const masked = serialize(hide.room, hide.ids[1]);
+  const hiddenRow = masked.players.find((player) => player.id === hide.ids[0]);
+  assert.equal(hiddenRow.scoreHidden, true);
+  assert.equal(hiddenRow.score, null);
+  const selfRow = serialize(hide.room, hide.ids[0]).players.find((player) => player.id === hide.ids[0]);
+  assert.equal(selfRow.score, 8);
+  assert.equal(selfRow.scoreHidden, false);
+  assert.equal(masked.ranking.find((row) => row.id === hide.ids[0]).score, null);
+  assert.equal(masked.ranking.find((row) => row.id === hide.ids[0]).scoreHidden, true);
+
+  const shield = freshRoom(["阿凱", "小魚"]);
+  applyAction(shield.room, shield.ids[0], { name: "start", game: "dj" });
+  shield.room.cards.hands[shield.ids[0]] = ["shield"];
+  assert.equal(applyAction(shield.room, shield.ids[0], { name: "cardPlay", card: "shield" }).ok, true);
+  applyAction(shield.room, shield.ids[0], { name: "djMode", mode: "own" });
+  applyAction(shield.room, shield.ids[0], { name: "djCue", url: watch });
+  assert.equal(applyAction(shield.room, shield.ids[1], { name: "djRate", value: -2 }).ok, true);
+  assert.equal(scoreOf(shield.room, shield.ids[0]), 0);
+  assert.equal(scoreOf(shield.room, shield.ids[1]), 1);
+  assert.equal(shield.room.game.ratings[shield.ids[1]], -2);
+
+  const block = freshRoom(["阿凱", "小魚"]);
+  applyAction(block.room, block.ids[0], { name: "start", game: "dj" });
+  applyAction(block.room, block.ids[0], { name: "djMode", mode: "own" });
+  applyAction(block.room, block.ids[0], { name: "djCue", url: watch });
+  block.room.cards.hands[block.ids[1]] = ["block"];
+  assert.equal(applyAction(block.room, block.ids[1], { name: "cardPlay", card: "block" }).ok, true);
+  assert.match(applyAction(block.room, block.ids[1], { name: "djRate", value: -1 }).error, /負分/);
+  assert.equal(scoreOf(block.room, block.ids[0]), 0);
+  assert.equal(scoreOf(block.room, block.ids[1]), 0);
+  assert.equal(block.room.game.ratings[block.ids[1]], undefined);
+  assert.deepEqual(block.room.cards.hands[block.ids[1]], []);
+
+  const steal = freshRoom(["阿凱", "小魚"]);
+  steal.room.cards.hands[steal.ids[0]] = ["steal"];
+  assert.match(
+    applyAction(steal.room, steal.ids[0], { name: "cardPlay", card: "steal", targetId: steal.ids[1] }).error,
+    /沒有分可以拿/,
+  );
+  assert.deepEqual(steal.room.cards.hands[steal.ids[0]], ["steal"]);
+  assert.equal(scoreOf(steal.room, steal.ids[0]), 0);
+  assert.equal(scoreOf(steal.room, steal.ids[1]), 0);
+
+  const extra = freshRoom(["阿凱", "小魚"]);
+  applyAction(extra.room, extra.ids[0], { name: "start", game: "dj" });
+  extra.room.cards.hands[extra.ids[0]] = ["extra"];
+  assert.equal(applyAction(extra.room, extra.ids[0], { name: "cardPlay", card: "extra" }).ok, true);
+  applyAction(extra.room, extra.ids[0], { name: "djMode", mode: "playlist" });
+  applyAction(extra.room, extra.ids[0], { name: "djCue", url: "https://music.youtube.com/watch?v=dQw4w9WgXcQ" });
+  assert.equal(serialize(extra.room, extra.ids[1]).game.songLimit, 4);
+  const videos = ["jNQXAC9IVRw", "M7lc1UVf-VE", "abcdefghijk", "bbbbbbbbbbb"];
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal(
+      applyAction(extra.room, extra.ids[0], {
+        name: "djSync",
+        videoId: videos[i],
+        title: `歌${i + 2}`,
+        playState: "playing",
+      }).ok,
+      true,
+    );
+    assert.equal(extra.room.game.step, "live");
+  }
+  assert.equal(extra.room.game.songCount, 4);
+  assert.equal(
+    applyAction(extra.room, extra.ids[0], { name: "djSync", videoId: videos[3], title: "歌5", playState: "playing" }).ok,
+    true,
+  );
+  assert.equal(extra.room.game.step, "pick");
+  assert.equal(extra.room.game.djId, extra.ids[1]);
+
+  const draw = freshRoom(["阿凱"]);
+  draw.room.cards.hands[draw.ids[0]] = ["hide", "peek", "steal"];
+  draw.room.cards.bornAt = Date.now() - 3 * 60 * 1000;
+  assert.equal(tickCardDraws(draw.room), false);
+  assert.equal(draw.room.cards.hands[draw.ids[0]].length, 3);
+  assert.equal(draw.room.cards.draws, 1);
 }
 
 function openClient(port) {
@@ -561,6 +672,12 @@ function testWatchSync() {
   assert.equal(dj.includes('if (mix) params.set("list"'), true);
   assert.equal(play.includes("聲音只從本輪迪爵的手機出來"), false);
   assert.equal(play.includes("大家一起看同一支影片"), true);
+  assert.equal(play.includes("旅途積分"), false);
+  assert.equal(play.includes("積分排名"), true);
+  assert.equal(dj.includes("積分榜"), false);
+  const app = fs.readFileSync(path.join(root, "client/src/App.jsx"), "utf8");
+  assert.equal(app.includes("PageSwitch"), true);
+  assert.equal(app.includes("is-parked"), true);
 }
 
 try {

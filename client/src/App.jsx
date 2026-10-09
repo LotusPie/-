@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
 import { DjGame } from "./dj.jsx";
-import { Home, Lobby, Roster } from "./play.jsx";
+import { CardDesk } from "./cards.jsx";
+import { Home, Lobby, PageSwitch, Roster, ScorePage } from "./play.jsx";
 
 async function writeText(text) {
   try {
@@ -34,6 +35,7 @@ export default function App() {
   const [linkCode] = useState(() => roomCodeFromLocation());
   const [code, setCode] = useState(linkCode);
   const [toast, setToast] = useState("");
+  const [page, setPage] = useState("play");
   const [bumped, setBumped] = useState({});
   const prevScores = useRef({});
   const invited = !room && linkCode && code === linkCode ? linkCode : "";
@@ -89,9 +91,11 @@ export default function App() {
   const turnId = room?.game?.kind === "dj" ? room.game.djId : null;
   const returning = !room && status === "connecting" && Boolean(loadSession()?.playerId);
   const pending = status === "connecting";
+  const rankOnly = page === "rank";
+  const appClass = ["app", room ? "in-room" : "", rankOnly ? "show-rank" : ""].filter(Boolean).join(" ");
 
   return (
-    <div className={room ? "app in-room" : "app"}>
+    <div className={appClass}>
       <header className="topbar">
         <p className="brand-en">on the trip</p>
         <div className="title-row">
@@ -115,29 +119,34 @@ export default function App() {
         </p>
       )}
 
-      {!room && returning && <p className="panel">正在回到房間…</p>}
-      {!room && !returning && (
-        <Home
-          nickname={nickname}
-          setNickname={setNickname}
-          code={code}
-          setCode={setCode}
-          onCreate={create}
-          onJoin={join}
-          error={error}
-          pending={pending}
-          invited={invited}
-        />
-      )}
-      {room?.phase === "lobby" && (
-        <Lobby
-          room={room}
-          youId={youId}
-          onStart={(game) => act({ name: "start", game })}
-          onLeave={leave}
-        />
-      )}
-      {room?.game?.kind === "dj" && <DjGame room={room} youId={youId} act={act} />}
+      <div
+        className={rankOnly ? "play-stage is-parked" : "play-stage"}
+        aria-hidden={rankOnly ? true : undefined}
+        inert={rankOnly ? "true" : undefined}
+      >
+        {!room && returning && <p className="panel">正在回到房間…</p>}
+        {!room && !returning && (
+          <Home
+            nickname={nickname}
+            setNickname={setNickname}
+            code={code}
+            setCode={setCode}
+            onCreate={create}
+            onJoin={join}
+            error={error}
+            pending={pending}
+            invited={invited}
+          />
+        )}
+        {room?.phase === "lobby" && (
+          <Lobby onStart={(game) => act({ name: "start", game })} onLeave={leave} />
+        )}
+        {room?.game?.kind === "dj" && <DjGame room={room} youId={youId} act={act} />}
+        {room && (room.phase === "lobby" || room.game?.kind === "dj") && (
+          <CardDesk room={room} youId={youId} act={act} />
+        )}
+      </div>
+      {rankOnly && <ScorePage room={room} youId={youId} />}
       <footer>
         <p>私人房間 · 沒有帳號 · 不會公開列出</p>
         {room && (
@@ -151,6 +160,7 @@ export default function App() {
           </div>
         )}
       </footer>
+      <PageSwitch page={page} onChange={setPage} />
       {toast && <p className="toast">{toast}</p>}
     </div>
   );

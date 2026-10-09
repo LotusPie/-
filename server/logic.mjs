@@ -1,5 +1,6 @@
 import { promptDeck, vibeDeck, scoreDeck } from "./decks.mjs";
-import { advanceDisconnectedDj, beginDj, handleDjAction } from "./dj.mjs";
+import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction } from "./dj.mjs";
+import { buyCard, clearRoundCards, forgetPlayer, hiddenFrom, initCards, playCard, presentCards, songLimit } from "./cards.mjs";
 
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
@@ -60,6 +61,7 @@ export function createPlayerRoom(nickname) {
     phase: "lobby",
     game: null,
     piles: freshPiles(),
+    cards: initCards(),
     lastDrawn: {},
     cursors: { vibe: 0, honor: 0, treat: 0 },
     updatedAt: Date.now(),
@@ -332,6 +334,7 @@ export function removePlayer(room, playerId) {
     leaving.ws.roomCode = null;
     leaving.ws = null;
   }
+  forgetPlayer(room, playerId);
   room.players = room.players.filter((player) => player.id !== playerId);
   if (room.hostId === playerId && room.players[0]) room.hostId = room.players[0].id;
   if (room.game?.votes) delete room.game.votes[playerId];
@@ -540,6 +543,7 @@ function passAssignee(room) {
 function lobby(room) {
   room.phase = "lobby";
   room.game = null;
+  clearRoundCards(room);
   return { ok: true };
 }
 
@@ -550,6 +554,12 @@ export function applyAction(room, playerId, msg) {
   const name = msg?.name;
   if (name === "start") return start(room, msg.game);
   if (name === "lobby") return lobby(room);
+  if (name === "cardBuy") return buyCard(room, playerId, msg.card);
+  if (name === "cardPlay") {
+    const played = playCard(room, playerId, msg);
+    if (played?.passSeat) return advanceDj(room, "skip");
+    return played;
+  }
   if (room.game?.kind === "dj" && name.startsWith("dj")) return handleDjAction(room, playerId, msg);
   if (!room.game) return { error: "現在還在房間裡，先選一個遊戲。" };
   if (name === "draw") return draw(room, Boolean(msg.force));
@@ -579,13 +589,21 @@ export function serialize(room, viewerId) {
     code: room.code,
     hostId: room.hostId,
     phase: room.phase,
-    players: room.players.map((player) => ({
-      id: player.id,
-      nickname: player.nickname,
-      score: player.score,
-      connected: player.connected,
-    })),
-    ranking: rankingOf(room.players),
+    players: room.players.map((player) => {
+      const scoreHidden = hiddenFrom(room, player.id, viewerId);
+      return {
+        id: player.id,
+        nickname: player.nickname,
+        score: scoreHidden ? null : player.score,
+        scoreHidden,
+        connected: player.connected,
+      };
+    }),
+    ranking: rankingOf(room.players).map((row) => {
+      const scoreHidden = hiddenFrom(room, row.id, viewerId);
+      return { ...row, score: scoreHidden ? null : row.score, scoreHidden };
+    }),
+    cards: presentCards(room, viewerId),
     game: game
       ? {
           kind: game.kind,
@@ -610,9 +628,14 @@ export function serialize(room, viewerId) {
           playState: game.playState || null,
           endsAt: game.endsAt || null,
           songCount: game.songCount || 0,
+          songLimit: game.kind === "dj" ? songLimit(game) : null,
+          extra: Boolean(game.extra),
+          extraSpins: game.extraSpins || 0,
           wheelMode: game.wheelMode || null,
           wheelSpin: game.wheelSpin || 0,
-          ratings: game.ratings || {},
+          ratings: Object.fromEntries(
+            Object.entries(game.ratings || {}).map(([id, value]) => [id, id === viewerId ? value : true]),
+          ),
         }
       : null,
   };

@@ -118,9 +118,9 @@ export function Roster({ room, youId, turnId, bumped }) {
               {!player.connected && <em>離線</em>}
             </span>
             <strong
-              className={`points${bumped[player.id] ? " bump" : ""}${player.score < 0 ? " neg" : ""}`}
+              className={`points${bumped[player.id] ? " bump" : ""}${!player.scoreHidden && player.score < 0 ? " neg" : ""}`}
             >
-              {player.score}
+              {player.scoreHidden ? "?" : player.score}
             </strong>
           </li>
         );
@@ -140,16 +140,55 @@ export function Ranking({ ranking, youId }) {
             {row.id === youId ? "（你）" : ""}
             {!row.connected ? " · 離線" : ""}
           </span>
-          <strong>{row.score}</strong>
+          <strong>{row.scoreHidden ? "?" : row.score}</strong>
         </li>
       ))}
     </ol>
   );
 }
 
-export function Lobby({ room, youId, onStart, onLeave }) {
-  const [leaving, setLeaving] = useState(false);
+export function PageSwitch({ page, onChange }) {
+  const items = [
+    ["play", "如果我是迪爵"],
+    ["rank", "積分排名"],
+  ];
+  return (
+    <nav className="page-switch" aria-label="切換頁面">
+      {items.map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          aria-current={page === id ? "page" : undefined}
+          onClick={() => onChange(id)}
+        >
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+export function ScorePage({ room, youId }) {
+  if (!room) {
+    return (
+      <section className="panel score-page">
+        <h2>積分排名</h2>
+        <p className="hint">進房間之後，這裡會列出大家的分數。</p>
+      </section>
+    );
+  }
   const hasScore = room.players.some((player) => player.score !== 0);
+  return (
+    <section className="panel score-page stack">
+      <h2>積分排名</h2>
+      {hasScore ? null : <p className="hint">分數會在遊戲裡慢慢長出來。現在大家都是 0。</p>}
+      <Ranking ranking={room.ranking || []} youId={youId} />
+    </section>
+  );
+}
+
+export function Lobby({ onStart, onLeave }) {
+  const [leaving, setLeaving] = useState(false);
   return (
     <div className="stack lobby">
       <section className="panel">
@@ -161,14 +200,6 @@ export function Lobby({ room, youId, onStart, onLeave }) {
         <strong>如果我是迪爵</strong>
         <span>自行選歌播一首。貼歌單接著播三首。</span>
       </button>
-      <section className="panel score-panel">
-        <h2>旅途積分</h2>
-        {hasScore ? (
-          <Ranking ranking={room.ranking} youId={youId} />
-        ) : (
-          <p className="hint">分數會在遊戲裡慢慢長出來。現在大家都是 0。</p>
-        )}
-      </section>
       {leaving ? (
         <div className="confirm">
           <p>離開後，你的名字會從名單拿掉。想再玩就用代碼進來。</p>
