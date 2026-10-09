@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
 import { DjGame } from "./dj.jsx";
-import { Home, Lobby, PromptGame, Roster, ScoreGame, VibeGame } from "./play.jsx";
+import { Home, Lobby, Roster } from "./play.jsx";
 
 async function writeText(text) {
   try {
@@ -86,12 +86,7 @@ export default function App() {
     setToast(ok ? "連結複製好了" : "複製沒成功，請自己選取網址");
   }
 
-  const turnId =
-    room?.game?.kind === "dj"
-      ? room.game.djId
-      : room?.game?.kind === "prompt" && !room.game.done
-        ? room.game.turnOrder[room.game.turnIndex]
-        : room?.game?.assigneeId || null;
+  const turnId = room?.game?.kind === "dj" ? room.game.djId : null;
   const returning = !room && status === "connecting" && Boolean(loadSession()?.playerId);
   const pending = status === "connecting";
 
@@ -153,10 +148,6 @@ export default function App() {
         />
       )}
       {room?.game?.kind === "dj" && <DjGame room={room} youId={youId} act={act} />}
-      {room?.game?.kind === "prompt" && <PromptGame room={room} youId={youId} act={act} />}
-      {room?.game?.kind === "vibe" && <VibeGame room={room} youId={youId} act={act} />}
-      {room?.game?.kind === "score" && <ScoreGame room={room} youId={youId} act={act} />}
-
       <footer>私人房間 · 沒有帳號 · 不會公開列出</footer>
       {toast && <p className="toast">{toast}</p>}
     </div>
