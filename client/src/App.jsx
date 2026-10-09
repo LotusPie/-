@@ -22,6 +22,18 @@ async function writeText(text) {
   }
 }
 
+const PAGE_KEY = "on-the-trip-page";
+
+function readLocalPage() {
+  try {
+    const value = sessionStorage.getItem(PAGE_KEY);
+    if (value === "play" || value === "cards" || value === "rank") return value;
+  } catch {
+    // this browser is not keeping local page state
+  }
+  return "play";
+}
+
 function roomLink(code) {
   const url = new URL(window.location.href);
   url.searchParams.set("room", code);
@@ -35,7 +47,7 @@ export default function App() {
   const [linkCode] = useState(() => roomCodeFromLocation());
   const [code, setCode] = useState(linkCode);
   const [toast, setToast] = useState("");
-  const [page, setPage] = useState("play");
+  const [page, setPage] = useState(readLocalPage);
   const [bumped, setBumped] = useState({});
   const prevScores = useRef({});
   const invited = !room && linkCode && code === linkCode ? linkCode : "";
@@ -43,6 +55,19 @@ export default function App() {
   useEffect(() => {
     document.title = room ? `房間 ${room.code} · 旅途小遊戲` : "旅途小遊戲";
   }, [room]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(PAGE_KEY, page);
+    } catch {
+      // the choice still stays in this page until reload
+    }
+  }, [page]);
+
+  function choosePage(next) {
+    if (next !== "play" && next !== "cards" && next !== "rank") return;
+    setPage(next);
+  }
 
   useEffect(() => {
     if (!room) return undefined;
@@ -91,8 +116,10 @@ export default function App() {
   const turnId = room?.game?.kind === "dj" ? room.game.djId : null;
   const returning = !room && status === "connecting" && Boolean(loadSession()?.playerId);
   const pending = status === "connecting";
-  const rankOnly = page === "rank";
-  const appClass = ["app", room ? "in-room" : "", rankOnly ? "show-rank" : ""].filter(Boolean).join(" ");
+  const onPlay = page === "play";
+  const appClass = ["app", room ? "in-room" : "", page === "rank" ? "show-rank" : "", page === "cards" ? "show-cards" : ""]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className={appClass}>
@@ -120,9 +147,9 @@ export default function App() {
       )}
 
       <div
-        className={rankOnly ? "play-stage is-parked" : "play-stage"}
-        aria-hidden={rankOnly ? true : undefined}
-        inert={rankOnly ? "true" : undefined}
+        className={onPlay ? "play-stage" : "play-stage is-parked"}
+        aria-hidden={onPlay ? undefined : true}
+        inert={onPlay ? undefined : "true"}
       >
         {!room && returning && <p className="panel">正在回到房間…</p>}
         {!room && !returning && (
@@ -142,11 +169,17 @@ export default function App() {
           <Lobby onStart={(game) => act({ name: "start", game })} onLeave={leave} />
         )}
         {room?.game?.kind === "dj" && <DjGame room={room} youId={youId} act={act} />}
-        {room && (room.phase === "lobby" || room.game?.kind === "dj") && (
-          <CardDesk room={room} youId={youId} act={act} />
-        )}
       </div>
-      {rankOnly && <ScorePage room={room} youId={youId} />}
+      {page === "rank" && <ScorePage room={room} youId={youId} />}
+      {page === "cards" &&
+        (room ? (
+          <CardDesk room={room} youId={youId} act={act} />
+        ) : (
+          <section className="panel card-page stack">
+            <h2>我的卡牌</h2>
+            <p className="hint">進房間之後，這裡會顯示目前的手牌和牌店。</p>
+          </section>
+        ))}
       <footer>
         <p>私人房間 · 沒有帳號 · 不會公開列出</p>
         {room && (
@@ -160,7 +193,7 @@ export default function App() {
           </div>
         )}
       </footer>
-      <PageSwitch page={page} onChange={setPage} />
+      <PageSwitch page={page} onChange={choosePage} />
       {toast && <p className="toast">{toast}</p>}
     </div>
   );

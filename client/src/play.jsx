@@ -150,6 +150,7 @@ export function Ranking({ ranking, youId }) {
 export function PageSwitch({ page, onChange }) {
   const items = [
     ["play", "如果我是迪爵"],
+    ["cards", "我的卡牌"],
     ["rank", "積分排名"],
   ];
   return (

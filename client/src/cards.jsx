@@ -47,7 +47,7 @@ export function CardDesk({ room, youId, act }) {
 
   return (
     <section className="card-desk panel">
-      <h2>手牌</h2>
+      <h2>目前的手牌</h2>
       {hand.length ? (
         <div className="card-hand">
           {hand.map((id, index) => {
