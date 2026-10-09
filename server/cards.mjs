@@ -431,7 +431,14 @@ export function presentCards(room, viewerId) {
   return {
     hand: [...(cards?.hands?.[viewerId] || [])],
     shop: CARD_LIST.map(({ id, name, cost, needs }) => ({ id, name, cost, needs })),
-    peek: peek ? { nickname: peekPlayer?.nickname || "旅伴", value: peek.value } : null,
+    peek: peek
+      ? {
+          nickname: peekPlayer?.nickname || "旅伴",
+          photo: typeof peekPlayer?.profile?.photo === "string" ? peekPlayer.profile.photo : "",
+          emoji: typeof peekPlayer?.profile?.emoji === "string" ? peekPlayer.profile.emoji : "",
+          value: peek.value,
+        }
+      : null,
     doubled,
     active: {
       shield: Boolean(game?.shield),

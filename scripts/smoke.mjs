@@ -784,7 +784,7 @@ function testProfile() {
   const [a, b] = ids;
   const before = serialize(room, b);
   const blank = before.players.find((player) => player.id === a).profile;
-  assert.equal(blank.emoji, "🎵");
+  assert.equal(blank.emoji, "");
   assert.equal(blank.photo, "");
   assert.equal(blank.line, "");
   assert.equal(blank.from, "");
@@ -867,6 +867,14 @@ function testProfile() {
   assert.equal(choose.includes("act("), false);
   assert.equal(choose.includes("setPage(next)"), true);
   assert.equal(server.includes('msg?.name === "profileSave"'), true);
+  const cardsUi = fs.readFileSync(path.join(root, "client/src/cards.jsx"), "utf8");
+  const djUi = fs.readFileSync(path.join(root, "client/src/dj.jsx"), "utf8");
+  assert.equal(profile.includes("function PersonFace"), true);
+  assert.equal(play.includes("PersonFace"), true);
+  assert.equal(cardsUi.includes("PersonFace"), true);
+  assert.equal(cardsUi.includes("hand.length >= 5"), true);
+  assert.equal(djUi.includes("這支手機在播"), true);
+  assert.equal(djUi.includes("評分的人"), true);
   assert.equal(server.includes("buf.length > 8000"), true);
 }
 

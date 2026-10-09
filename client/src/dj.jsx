@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { nameOf } from "./play.jsx";
+import { nameOf, playerOf } from "./play.jsx";
+import { PersonFace } from "./profile.jsx";
 import { expectedPlayhead, planFollow } from "./watch-sync.js";
 
 const RATINGS = [-2, -1, 1, 2];
@@ -569,7 +570,8 @@ function RateControls({ room, youId, act }) {
 export function DjGame({ room, youId, act }) {
   const game = room.game;
   const mine = game.djId === youId;
-  const djName = nameOf(room, game.djId);
+  const dj = playerOf(room, game.djId);
+  const djName = dj?.nickname || nameOf(room, game.djId);
   const [url, setUrl] = useState("");
   const actRef = useRef(act);
   actRef.current = act;
@@ -598,8 +600,10 @@ export function DjGame({ room, youId, act }) {
       <div className="stack dj-play">
       <p className="dj-kicker">如果我是迪爵 · 第 {game.round} 輪</p>
       <p className="dj-who">
-        本輪迪爵
-        <strong>{djName}</strong>
+        <span>本輪迪爵</span>
+        <PersonFace large nickname={djName} profile={dj?.profile} />
+        <strong className="who-name">{djName}{mine ? "（你）" : ""}</strong>
+        {game.step === "live" ? <span className="person-sub">這支手機在播</span> : null}
       </p>
 
       {game.step === "pick" && (
@@ -619,7 +623,13 @@ export function DjGame({ room, youId, act }) {
               {(game.wheelSpin || 0) > 0 && game.extraSpins > 0 ? "再轉一次" : (game.wheelSpin || 0) > 0 ? "轉盤轉著" : "轉一下"}
             </button>
           ) : (
-            <p className="turn-line">等 {djName} 轉</p>
+            <p className="person-line">
+              <PersonFace nickname={djName} profile={dj?.profile} />
+              <span>
+                <strong className="who-name">{djName}</strong>
+                <span className="person-sub">等這位轉</span>
+              </span>
+            </p>
           )}
         </section>
       )}
@@ -661,7 +671,13 @@ export function DjGame({ room, youId, act }) {
               </button>
             </form>
           ) : (
-            <p className="hint">{djName} 正在貼連結。等一下大家一起看這支影片。</p>
+            <p className="person-line">
+              <PersonFace nickname={djName} profile={dj?.profile} />
+              <span>
+                <strong className="who-name">{djName}</strong>
+                <span className="person-sub">正在貼連結。等一下大家一起看這支影片。</span>
+              </span>
+            </p>
           )}
         </section>
       )}
@@ -709,6 +725,27 @@ function ExtraCue({ act }) {
   );
 }
 
+function RatingRows({ room, game }) {
+  const people = room.players.filter((player) => player.id !== game.djId);
+  if (!people.length) return null;
+  return (
+    <ul className="person-rows" aria-label="評分的人">
+      {people.map((player) => {
+        const rated = game.ratings?.[player.id] != null;
+        return (
+          <li key={player.id}>
+            <PersonFace nickname={player.nickname} profile={player.profile} />
+            <span className="who-name">
+              {player.nickname}
+              {rated ? " · 評過了" : " · 還沒評"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function Live({ room, youId, act, mine }) {
   const game = room.game;
   const playlist = game.mode === "playlist";
@@ -718,6 +755,7 @@ function Live({ room, youId, act, mine }) {
   return (
     <section className="stack">
       {showCount ? <p className="song-count">第 {game.songCount || 1} / {limit} 首</p> : null}
+      <RatingRows room={room} game={game} />
       <NowPlaying song={game.song} />
       <p className="turn-line">大家一起看這支影片</p>
       {mine ? (

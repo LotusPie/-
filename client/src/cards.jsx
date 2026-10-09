@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { nameOf } from "./play.jsx";
+import { nameOf, playerOf } from "./play.jsx";
+import { PersonFace } from "./profile.jsx";
 
 function signed(value) {
   return value > 0 ? `+${value}` : String(value);
@@ -203,7 +204,6 @@ export function CardDesk({ room, youId, act, error }) {
   if (active.blockNegative) notes.push("擋負分：這一首不能打負分");
   if (active.forcedMode) notes.push(`指定模式：下一轉是${modeName(active.forcedMode)}`);
   if (active.extra) notes.push("多一首：這一輪多播一首");
-  if (active.nextDjId) notes.push(`指定下一位：${nameOf(room, active.nextDjId)}`);
   if (cards.doubled) notes.push("你的下一筆評分會算兩次");
 
   const online = room.players.filter((player) => player.connected);
@@ -281,12 +281,15 @@ export function CardDesk({ room, youId, act, error }) {
                       {(pendingSpec.needs === "player" ? online : others).map((player) => (
                         <button
                           key={player.id}
-                          className="secondary"
+                          className="person-pick"
                           type="button"
                           onClick={() => play(pending, { targetId: player.id })}
                         >
-                          {player.nickname}
-                          {player.id === youId ? "（你）" : ""}
+                          <PersonFace nickname={player.nickname} profile={player.profile} />
+                          <span className="who-name">
+                            {player.nickname}
+                            {player.id === youId ? "（你）" : ""}
+                          </span>
                         </button>
                       ))}
                       {pendingSpec.needs === "other" && others.length === 0 ? (
@@ -303,8 +306,21 @@ export function CardDesk({ room, youId, act, error }) {
         )}
       </section>
       {cards.peek ? (
-        <p className="card-note">
-          你看到{cards.peek.nickname}這首打了 {signed(cards.peek.value)}
+        <p className="card-note person-line">
+          <PersonFace nickname={cards.peek.nickname} profile={cards.peek} />
+          <span>
+            <strong className="who-name">{cards.peek.nickname}</strong>
+            <span className="person-sub">這首打了 {signed(cards.peek.value)}</span>
+          </span>
+        </p>
+      ) : null}
+      {active.nextDjId ? (
+        <p className="person-line">
+          <PersonFace nickname={nameOf(room, active.nextDjId)} profile={playerOf(room, active.nextDjId)?.profile} />
+          <span>
+            <strong className="who-name">{nameOf(room, active.nextDjId)}</strong>
+            <span className="person-sub">指定下一位</span>
+          </span>
         </p>
       ) : null}
       {notes.length ? (

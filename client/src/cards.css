@@ -127,6 +127,10 @@
   flex: 1 1 8rem;
 }
 
+.card-picks button.person-pick {
+  flex: 1 1 100%;
+}
+
 .card-note,
 .card-notes {
   margin: 0;

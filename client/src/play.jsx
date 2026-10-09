@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { ProfileView } from "./profile.jsx";
+import { PersonFace, ProfileView } from "./profile.jsx";
+
+export function playerOf(room, id) {
+  return room?.players?.find((player) => player.id === id) || null;
+}
 
 export function nameOf(room, id) {
-  return room.players.find((player) => player.id === id)?.nickname || "旅伴";
+  return playerOf(room, id)?.nickname || "旅伴";
 }
 
 function rankWord(rank) {
@@ -112,8 +116,9 @@ export function Roster({ room, youId, turnId, bumped }) {
           .join(" ");
         return (
           <li key={player.id} className={classes}>
+            <PersonFace nickname={player.nickname} profile={player.profile} />
             <span className="nick">
-              {player.nickname}
+              <span className="who-name">{player.nickname}</span>
               {player.id === youId && <em>你</em>}
               {player.id === room.hostId && <em className="host">房主</em>}
               {!player.connected && <em>離線</em>}
@@ -137,9 +142,12 @@ export function Ranking({ ranking, youId, onOpen }) {
         <li key={row.id} className={row.id === youId ? "me" : ""}>
           <span className="rank">{rankWord(row.rank)}</span>
           <button type="button" className="who who-btn" onClick={() => onOpen?.(row.id)}>
-            {row.nickname}
-            {row.id === youId ? "（你）" : ""}
-            {!row.connected ? " · 離線" : ""}
+            <PersonFace nickname={row.nickname} profile={row.profile} />
+            <span className="who-name">
+              {row.nickname}
+              {row.id === youId ? "（你）" : ""}
+              {!row.connected ? " · 離線" : ""}
+            </span>
           </button>
           <strong>{row.scoreHidden ? "?" : row.score}</strong>
         </li>

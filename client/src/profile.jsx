@@ -57,14 +57,21 @@ async function fitPhoto(file) {
   throw new Error("照片請小於 200KB。");
 }
 
+export function PersonFace({ nickname = "旅伴", profile, large = false }) {
+  const photo = typeof profile?.photo === "string" ? profile.photo : "";
+  const emoji = AVATARS.includes(profile?.emoji) ? profile.emoji : "";
+  const letter = [...(nickname || "旅")][0] || "旅";
+  return (
+    <span className={large ? "person-face is-large" : "person-face"} aria-hidden="true">
+      {photo ? <img src={photo} alt="" /> : <span>{emoji || letter}</span>}
+    </span>
+  );
+}
+
 export function ProfileView({ nickname, profile, onClose }) {
-  const photo = profile?.photo || "";
-  const emoji = AVATARS.includes(profile?.emoji) ? profile.emoji : AVATARS[0];
   return (
     <article className="profile-card">
-      <div className="profile-face" aria-hidden="true">
-        {photo ? <img src={photo} alt="" /> : <span>{emoji}</span>}
-      </div>
+      <PersonFace large nickname={nickname} profile={profile} />
       <h3>{nickname}</h3>
       <p className={profile?.line ? "profile-line" : "profile-line empty"}>
         {profile?.line || "這個人還沒留下一句話。"}

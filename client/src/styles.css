@@ -503,9 +503,10 @@ button.together {
 }
 
 .dj-who strong {
-  color: var(--ink);
-  font-size: clamp(1.75rem, 7vw, 2.4rem);
-  line-height: 1.15;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 

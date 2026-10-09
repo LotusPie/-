@@ -111,7 +111,7 @@ function photoByteLength(dataUrl) {
 export function presentProfile(player) {
   const profile = player?.profile || {};
   return {
-    emoji: AVATARS.includes(profile.emoji) ? profile.emoji : AVATARS[0],
+    emoji: AVATARS.includes(profile.emoji) ? profile.emoji : "",
     photo: typeof profile.photo === "string" ? profile.photo : "",
     line: typeof profile.line === "string" ? profile.line : "",
     from: typeof profile.from === "string" ? profile.from : "",
