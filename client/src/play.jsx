@@ -151,7 +151,7 @@ export function Lobby({ room, youId, onStart, onLeave }) {
   const [leaving, setLeaving] = useState(false);
   const hasScore = room.players.some((player) => player.score !== 0);
   return (
-    <div className="stack">
+    <div className="stack lobby">
       <section className="panel">
         <h2>車上主遊戲</h2>
         <p className="hint">大家一起看同一支影片，其他人評分。</p>
@@ -161,7 +161,7 @@ export function Lobby({ room, youId, onStart, onLeave }) {
         <strong>如果我是迪爵</strong>
         <span>自行選歌播一首。貼歌單接著播三首。</span>
       </button>
-      <section className="panel">
+      <section className="panel score-panel">
         <h2>旅途積分</h2>
         {hasScore ? (
           <Ranking ranking={room.ranking} youId={youId} />

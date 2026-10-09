@@ -15,6 +15,13 @@
   box-sizing: border-box;
 }
 
+html {
+  background-color: var(--paper);
+  overflow-x: clip;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
 html,
 body,
 #root {
@@ -77,14 +84,18 @@ h2 {
 }
 
 .app {
-  max-width: 480px;
+  width: min(100%, 560px);
   margin: 0 auto;
   min-height: 100dvh;
-  padding: 20px 18px calc(28px + env(safe-area-inset-bottom));
+  padding:
+    max(20px, env(safe-area-inset-top, 0px))
+    max(18px, env(safe-area-inset-right, 0px))
+    calc(48px + env(safe-area-inset-bottom, 0px))
+    max(18px, env(safe-area-inset-left, 0px));
 }
 
 .topbar {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .brand-en {
@@ -98,6 +109,7 @@ h2 {
 h1 {
   font-size: 2.35rem;
   line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 .in-room h1 {
@@ -106,9 +118,11 @@ h1 {
 
 .title-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
 }
 
 .code {
@@ -171,6 +185,13 @@ h1 {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+}
+
+.lede,
+.hint,
+.invite,
+.turn-line {
+  overflow-wrap: anywhere;
 }
 
 .lede,
@@ -255,11 +276,13 @@ label {
 
 input {
   width: 100%;
+  max-width: 100%;
   min-height: 56px;
   border-radius: 16px;
   border: 2px solid var(--ink);
   background: white;
   padding: 0 14px;
+  font-size: max(16px, 1em);
 }
 
 input::placeholder {
@@ -268,7 +291,7 @@ input::placeholder {
 
 .code-input {
   letter-spacing: 0.28em;
-  font-size: 1.4rem;
+  font-size: max(16px, 1.4rem);
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -387,13 +410,15 @@ button.together {
 
 .wheel-wrap {
   position: relative;
-  width: min(280px, 86vw);
+  width: min(280px, 100%);
+  max-width: 100%;
   margin: 4px auto 0;
+  padding-top: 20px;
 }
 
 .wheel-pointer {
   position: absolute;
-  top: -2px;
+  top: 0;
   left: 50%;
   z-index: 3;
   width: 0;
@@ -419,21 +444,23 @@ button.together {
   position: absolute;
   top: 50%;
   z-index: 1;
+  width: max-content;
+  max-width: 34%;
   color: white;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  line-height: 1.2;
-  white-space: nowrap;
+  line-height: 1.15;
+  text-align: center;
   pointer-events: none;
   transition: transform 2.4s cubic-bezier(0.15, 0.75, 0.1, 1);
 }
 
 .wheel-label.own {
-  left: 26%;
+  left: 23%;
 }
 
 .wheel-label.playlist {
-  left: 74%;
+  left: 77%;
 }
 
 .wheel-hub {
@@ -473,8 +500,9 @@ button.together {
 
 .dj-who strong {
   color: var(--ink);
-  font-size: 2.4rem;
+  font-size: clamp(1.75rem, 7vw, 2.4rem);
   line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 .song-hero,
@@ -487,8 +515,9 @@ button.together {
 
 .song-hero {
   position: sticky;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   z-index: 2;
+  max-width: 100%;
 }
 
 .song-title,
@@ -513,6 +542,7 @@ button.together {
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--ink-soft);
+  overflow-wrap: anywhere;
 }
 
 .rate-row {
@@ -522,14 +552,15 @@ button.together {
 }
 
 .rate-row button {
-  min-height: 76px;
+  min-width: 0;
+  min-height: 56px;
   padding: 8px 0;
-  font-size: 1.35rem;
+  font-size: clamp(1.05rem, 4vw, 1.35rem);
   text-align: center;
 }
 
 .song-input {
-  font-size: 1.15rem;
+  font-size: max(16px, 1.15rem);
   font-weight: 700;
   min-height: 72px;
 }
@@ -553,6 +584,7 @@ button.together {
 .yt-frame {
   position: relative;
   width: 100%;
+  max-width: 100%;
   aspect-ratio: 16 / 9;
   background: #211c18;
   border-radius: 22px;
@@ -584,15 +616,17 @@ button.together {
 
 .roster {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
   list-style: none;
-  padding: 4px 2px 12px;
-  margin: 12px 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
 }
 
 .roster li {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
   min-height: 52px;
   display: flex;
   align-items: center;
@@ -619,8 +653,11 @@ button.together {
 .nick {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .nick em {
@@ -637,8 +674,9 @@ button.together {
 }
 
 .points {
-  min-width: 36px;
-  height: 36px;
+  flex-shrink: 0;
+  min-width: 44px;
+  height: 44px;
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -669,7 +707,12 @@ button.together {
 }
 
 .ranking li {
-  grid-template-columns: 3.2rem 1fr auto;
+  grid-template-columns: 3.2rem minmax(0, 1fr) auto;
+}
+
+.who {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .ranking li:last-child,
@@ -765,12 +808,23 @@ button.together {
 }
 
 .banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
   background: white;
   border: 2px solid var(--terra);
   color: var(--terra);
   border-radius: 16px;
   padding: 12px 14px;
   font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.banner .texty {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .confirm {
@@ -788,12 +842,32 @@ footer {
   color: var(--ink-soft);
   font-size: 0.92rem;
   text-align: center;
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+footer p {
+  margin: 0;
+}
+
+.footer-actions {
+  width: 100%;
+  justify-content: center;
+}
+
+.footer-actions button {
+  min-height: 48px;
+  padding: 0 18px;
 }
 
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   background: var(--ink);
   color: var(--card);
@@ -801,7 +875,26 @@ footer {
   border-radius: 999px;
   font-weight: 700;
   z-index: 5;
-  max-width: calc(100% - 32px);
+  max-width: min(24rem, calc(100% - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.dj-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dj-play,
+.stage,
+.room-body,
+.panel,
+.ticket,
+.song-hero {
+  min-width: 0;
+  max-width: 100%;
 }
 
 @keyframes rise {
@@ -841,5 +934,181 @@ footer {
   button:active {
     animation: none;
     transform: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .app {
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+  }
+
+  button.together {
+    min-height: 72px;
+    font-size: 1.45rem;
+  }
+
+  button.game-choice.dj strong {
+    font-size: 1.65rem;
+  }
+
+  .rate-row {
+    gap: 6px;
+  }
+}
+
+@media (max-height: 520px) {
+  .wheel-wrap {
+    width: min(200px, 46dvh);
+  }
+
+  .song-hero {
+    position: static;
+  }
+
+  button.xl,
+  button.together {
+    min-height: 48px;
+  }
+
+  button.together {
+    font-size: 1.35rem;
+  }
+}
+
+@media (min-width: 720px) {
+  .app {
+    width: min(100%, 760px);
+    padding-top: max(28px, env(safe-area-inset-top, 0px));
+    padding-right: max(28px, env(safe-area-inset-right, 0px));
+    padding-left: max(28px, env(safe-area-inset-left, 0px));
+  }
+
+  .topbar .row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .topbar .row > * {
+    flex: 0 0 auto;
+    min-width: 8.5rem;
+  }
+
+  .home {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .home > .ticket,
+  .home > .invite,
+  .home > .banner {
+    grid-column: 1 / -1;
+  }
+
+  .lede {
+    max-width: 38rem;
+  }
+
+  .wheel-wrap {
+    width: min(340px, 100%);
+  }
+
+  .wheel-label {
+    font-size: 1rem;
+  }
+
+  .rate-row {
+    max-width: 480px;
+    margin-inline: auto;
+    gap: 10px;
+  }
+
+  .rate-row button {
+    min-height: 64px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .app {
+    width: min(100%, 840px);
+  }
+
+  .app.in-room {
+    width: min(100%, 1120px);
+  }
+
+  .song-hero {
+    position: static;
+  }
+
+  .song-title {
+    font-size: 1.7rem;
+  }
+
+  .lobby {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    gap: 16px 28px;
+    align-items: start;
+  }
+
+  .lobby > .panel:not(.score-panel) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .lobby > .game-choice {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .lobby > .score-panel {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+  }
+
+  .lobby > .confirm,
+  .lobby > button.texty {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .lobby > button.texty {
+    justify-self: start;
+  }
+
+  .dj-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+    grid-template-areas:
+      "play score"
+      "back score";
+    column-gap: 28px;
+    row-gap: 12px;
+    align-items: start;
+  }
+
+  .dj-play {
+    grid-area: play;
+  }
+
+  .scoreboard {
+    grid-area: score;
+    position: sticky;
+    top: max(16px, env(safe-area-inset-top, 0px));
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px));
+    overflow: auto;
+  }
+
+  .dj-back {
+    grid-area: back;
+    justify-self: start;
+  }
+
+  .rate-row {
+    max-width: 520px;
   }
 }

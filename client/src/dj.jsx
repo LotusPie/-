@@ -563,12 +563,16 @@ export function DjGame({ room, youId, act }) {
   useEffect(() => {
     if (!mine || game.step !== "pick" || !game.wheelSpin || !game.wheelMode) return undefined;
     const mode = game.wheelMode;
-    const timer = setTimeout(() => actRef.current({ name: "djMode", mode }), WHEEL_MS);
+    const reduce =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = setTimeout(() => actRef.current({ name: "djMode", mode }), reduce ? 0 : WHEEL_MS);
     return () => clearTimeout(timer);
   }, [mine, game.step, game.wheelSpin, game.wheelMode]);
 
   return (
-    <div className="stack dj-game">
+    <div className="dj-layout dj-game">
+      <div className="stack dj-play">
       <p className="dj-kicker">如果我是迪爵 · 第 {game.round} 輪</p>
       <p className="dj-who">
         本輪迪爵
@@ -639,12 +643,13 @@ export function DjGame({ room, youId, act }) {
       {game.step === "live" && (
         <Live room={room} youId={youId} act={act} mine={mine} />
       )}
+      </div>
 
-      <section className="panel">
+      <section className="panel scoreboard">
         <h2>積分榜</h2>
         <Ranking ranking={room.ranking} youId={youId} />
       </section>
-      <button className="texty" type="button" onClick={() => act({ name: "lobby" })}>
+      <button className="texty dj-back" type="button" onClick={() => act({ name: "lobby" })}>
         回房間
       </button>
     </div>

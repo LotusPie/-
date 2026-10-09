@@ -102,16 +102,6 @@ export default function App() {
             </p>
           )}
         </div>
-        {room && (
-          <div className="row">
-            <button className="tiny" type="button" onClick={copyCode}>
-              複製代碼
-            </button>
-            <button className="tiny" type="button" onClick={shareLink}>
-              分享連結
-            </button>
-          </div>
-        )}
       </header>
 
       {room && <Roster room={room} youId={youId} turnId={turnId} bumped={bumped} />}
@@ -148,7 +138,19 @@ export default function App() {
         />
       )}
       {room?.game?.kind === "dj" && <DjGame room={room} youId={youId} act={act} />}
-      <footer>私人房間 · 沒有帳號 · 不會公開列出</footer>
+      <footer>
+        <p>私人房間 · 沒有帳號 · 不會公開列出</p>
+        {room && (
+          <div className="row footer-actions">
+            <button className="tiny" type="button" onClick={copyCode}>
+              複製代碼
+            </button>
+            <button className="tiny" type="button" onClick={shareLink}>
+              分享連結
+            </button>
+          </div>
+        )}
+      </footer>
       {toast && <p className="toast">{toast}</p>}
     </div>
   );
