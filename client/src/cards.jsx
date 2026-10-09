@@ -231,7 +231,7 @@ export function CardDesk({ room, youId, act, error }) {
           <h2>抽一張</h2>
           <p>進房先抽三次</p>
         </header>
-        <DrawWheel draw={cards.draw} act={act} error={error} handFull={hand.length >= 3} />
+        <DrawWheel draw={cards.draw} act={act} error={error} handFull={hand.length >= 5} />
       </section>
       <section className="deck-block">
         <header className="deck-head">

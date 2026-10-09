@@ -398,10 +398,10 @@ function testCards() {
   assert.equal(extra.room.game.djId, extra.ids[1]);
 
   const draw = freshRoom(["阿凱"]);
-  draw.room.cards.hands[draw.ids[0]] = ["hide", "peek", "steal"];
+  draw.room.cards.hands[draw.ids[0]] = ["hide", "peek", "steal", "shield", "block"];
   draw.room.cards.bornAt = Date.now() - 3 * 60 * 1000;
   assert.equal(tickCardDraws(draw.room), false);
-  assert.equal(draw.room.cards.hands[draw.ids[0]].length, 3);
+  assert.equal(draw.room.cards.hands[draw.ids[0]].length, 5);
   assert.equal(draw.room.cards.draws, 1);
 }
 
@@ -441,10 +441,30 @@ function testCards() {
     Math.random = random;
   }
 
+  const three = freshRoom(["阿凱"]);
+  three.room.players[0].score = 20;
+  three.room.cards.hands[three.ids[0]] = ["hide", "peek", "steal"];
+  assert.equal(applyAction(three.room, three.ids[0], { name: "cardSpin" }).ok, true);
+  assert.equal(serialize(three.room, three.ids[0]).cards.draw.spinsLeft, 3);
+  assert.equal(applyAction(three.room, three.ids[0], { name: "cardBuy", card: "shield" }).ok, true);
+  assert.equal(three.room.cards.hands[three.ids[0]].length, 4);
+
+  const four = freshRoom(["阿凱"]);
+  four.room.players[0].score = 20;
+  four.room.cards.hands[four.ids[0]] = ["hide", "peek", "steal", "shield"];
+  assert.equal(applyAction(four.room, four.ids[0], { name: "cardSpin" }).ok, true);
+  assert.equal(serialize(four.room, four.ids[0]).cards.draw.spinsLeft, 3);
+  assert.equal(applyAction(four.room, four.ids[0], { name: "cardBuy", card: "block" }).ok, true);
+  assert.equal(four.room.cards.hands[four.ids[0]].length, 5);
+
   const fullDraw = freshRoom(["阿凱"]);
-  fullDraw.room.cards.hands[fullDraw.ids[0]] = ["hide", "peek", "steal"];
+  fullDraw.room.players[0].score = 20;
+  fullDraw.room.cards.hands[fullDraw.ids[0]] = ["hide", "peek", "steal", "shield", "block"];
   assert.match(applyAction(fullDraw.room, fullDraw.ids[0], { name: "cardSpin" }).error, /手牌滿了/);
   assert.equal(serialize(fullDraw.room, fullDraw.ids[0]).cards.draw.spinsLeft, 3);
+  assert.match(applyAction(fullDraw.room, fullDraw.ids[0], { name: "cardBuy", card: "pass" }).error, /五張/);
+  assert.equal(fullDraw.room.cards.hands[fullDraw.ids[0]].length, 5);
+  assert.equal(fullDraw.room.players[0].score, 20);
 
 function openClient(port) {
   return new Promise((resolve, reject) => {

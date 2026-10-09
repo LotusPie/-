@@ -1,4 +1,4 @@
-export const HAND_MAX = 3;
+export const HAND_MAX = 5;
 export const DRAW_EVERY_MS = 3 * 60 * 1000;
 
 export const CARD_LIST = [
@@ -194,7 +194,7 @@ export function buyCard(room, playerId, cardId) {
   if (player.score < 0) return { error: "分數是負的，不能買。" };
   if (player.score < spec.cost) return { error: "分數不夠，不能買。" };
   const hand = handOf(room, playerId);
-  if (hand.length >= HAND_MAX) return { error: "手上已經有三張牌。" };
+  if (hand.length >= HAND_MAX) return { error: "手上已經有五張牌。" };
   player.score -= spec.cost;
   hand.push(spec.id);
   return { ok: true };
