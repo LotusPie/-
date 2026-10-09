@@ -165,13 +165,7 @@ export function handleDjAction(room, playerId, msg) {
   }
 
   if (name === "djBack") {
-    if (game.step !== "enter") return { error: "現在不能重選。" };
-    if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
-    game.step = "pick";
-    game.mode = null;
-    game.wheelMode = null;
-    game.wheelSpin = 0;
-    return { ok: true };
+    return { error: "轉完就不能重選模式。" };
   }
 
   if (name === "djSpin") {

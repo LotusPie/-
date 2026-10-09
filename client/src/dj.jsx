@@ -633,11 +633,6 @@ export function DjGame({ room, youId, act }) {
           ) : (
             <p className="hint">{djName} 正在貼連結。等一下大家一起看這支影片。</p>
           )}
-          {mine && (
-            <button className="texty" type="button" onClick={() => act({ name: "djBack" })}>
-              重選模式
-            </button>
-          )}
         </section>
       )}
 

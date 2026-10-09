@@ -128,6 +128,9 @@ function testDj() {
   assert.ok(room.game.skipped.includes(a));
 
   assert.equal(applyAction(room, b, { name: "djMode", mode: "own" }).ok, true);
+  assert.match(applyAction(room, b, { name: "djBack" }).error, /不能重選模式/);
+  assert.equal(room.game.step, "enter");
+  assert.equal(room.game.mode, "own");
   assert.match(applyAction(room, b, { name: "djCue", url: "https://example.com/a" }).error, /連結/);
   assert.equal(applyAction(room, b, { name: "djCue", url: watch }).ok, true);
   assert.equal(room.game.step, "live");
