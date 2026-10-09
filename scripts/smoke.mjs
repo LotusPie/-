@@ -207,6 +207,11 @@ function testDj() {
   assert.equal(room.game.djId, a);
   assert.equal(room.game.step, "pick");
   assert.match(applyAction(room, b, { name: "djMode", mode: "own" }).error, /另一位迪爵/);
+  assert.match(applyAction(room, b, { name: "djSpin", mode: "playlist" }).error, /另一位迪爵/);
+  assert.equal(applyAction(room, a, { name: "djSpin", mode: "own" }).ok, true);
+  assert.equal(room.game.step, "pick");
+  assert.equal(room.game.wheelMode, "own");
+  assert.equal(room.game.wheelSpin, 1);
   assert.match(applyAction(room, a, { name: "djSubmit", title: "七里香" }).error, /還沒有這個動作/);
 
   assert.equal(applyAction(room, c, { name: "djSkip" }).ok, true);
@@ -252,7 +257,8 @@ function testDj() {
   assert.equal(scoreOf(room, b), 0);
   assert.equal(room.game.step, "live");
   assert.match(applyAction(room, a, { name: "djRate", value: 2 }).error, /評過了/);
-  assert.equal(applyAction(room, c, { name: "djRate", value: "none" }).ok, true);
+  assert.match(applyAction(room, c, { name: "djRate", value: "none" }).error, /沒有這個分數/);
+  assert.equal(room.game.ratings[c], undefined);
   assert.equal(scoreOf(room, c), 0);
   assert.equal(scoreOf(room, b), 0);
   assert.equal(applyAction(room, b, { name: "djEnded" }).ok, true);
@@ -260,11 +266,11 @@ function testDj() {
   assert.equal(room.game.djId, c);
 
   assert.equal(applyAction(room, c, { name: "djMode", mode: "playlist" }).ok, true);
-  const started = Date.now();
   assert.equal(applyAction(room, c, { name: "djCue", url: music }).ok, true);
   assert.equal(room.game.step, "live");
   assert.equal(room.game.videoId, "dQw4w9WgXcQ");
-  assert.ok(room.game.endsAt >= started + 20 * 60 * 1000 - 2000);
+  assert.equal(room.game.endsAt, null);
+  assert.equal(room.game.songCount, 1);
   assert.equal(applyAction(room, b, { name: "djRate", value: -2 }).ok, true);
   assert.equal(scoreOf(room, b), 1);
   assert.equal(scoreOf(room, c), -2);
@@ -283,6 +289,7 @@ function testDj() {
   assert.equal(room.game.videoId, "jNQXAC9IVRw");
   assert.equal(room.game.currentTime, 8.5);
   assert.equal(room.game.song.title, "下一首");
+  assert.equal(room.game.songCount, 2);
   assert.equal(room.game.ratings[b], undefined);
   assert.equal(applyAction(room, b, { name: "djRate", value: 1 }).ok, true);
   assert.equal(scoreOf(room, b), 2);
@@ -296,11 +303,37 @@ function testDj() {
   applyAction(timed.room, timed.ids[0], { name: "start", game: "dj" });
   applyAction(timed.room, timed.ids[0], { name: "djMode", mode: "playlist" });
   applyAction(timed.room, timed.ids[0], { name: "djCue", url: watch });
-  assert.match(applyAction(timed.room, timed.ids[0], { name: "djTimeUp" }).error, /時間還沒到/);
-  timed.room.game.endsAt = Date.now() - 1000;
-  assert.equal(expireDj(timed.room), true);
-  assert.equal(timed.room.game.step, "pick");
-  assert.equal(timed.room.game.djId, timed.ids[1]);
+  assert.equal(timed.room.game.endsAt, null);
+  assert.equal(timed.room.game.songCount, 1);
+  assert.equal(applyAction(timed.room, timed.ids[0], { name: "djTimeUp" }).ok, true);
+  assert.equal(timed.room.game.step, "live");
+  assert.equal(timed.room.game.djId, timed.ids[0]);
+  assert.equal(expireDj(timed.room), false);
+
+  const mix = freshRoom(["阿凱", "小魚"]);
+  applyAction(mix.room, mix.ids[0], { name: "start", game: "dj" });
+  applyAction(mix.room, mix.ids[0], { name: "djMode", mode: "playlist" });
+  applyAction(mix.room, mix.ids[0], { name: "djCue", url: music });
+  assert.equal(
+    applyAction(mix.room, mix.ids[0], { name: "djSync", videoId: "jNQXAC9IVRw", title: "第二首", playState: "playing" }).ok,
+    true,
+  );
+  assert.equal(mix.room.game.songCount, 2);
+  assert.equal(mix.room.game.step, "live");
+  assert.equal(
+    applyAction(mix.room, mix.ids[0], { name: "djSync", videoId: "M7lc1UVf-VE", title: "第三首", playState: "playing" }).ok,
+    true,
+  );
+  assert.equal(mix.room.game.songCount, 3);
+  assert.equal(mix.room.game.videoId, "M7lc1UVf-VE");
+  assert.equal(mix.room.game.step, "live");
+  assert.equal(
+    applyAction(mix.room, mix.ids[0], { name: "djSync", videoId: "abcdefghijk", title: "第四首", playState: "playing" }).ok,
+    true,
+  );
+  assert.equal(mix.room.game.step, "pick");
+  assert.equal(mix.room.game.djId, mix.ids[1]);
+  assert.equal(mix.room.game.videoId, null);
 
   const low = freshRoom(["阿凱", "小魚"]);
   applyAction(low.room, low.ids[0], { name: "start", game: "dj" });
@@ -494,7 +527,11 @@ async function testServer() {
     playlistDj.send({ type: "action", name: "djCue", url: "https://music.youtube.com/watch?v=dQw4w9WgXcQ" });
     await waitUntil(
       playlistListener.states,
-      (msg) => msg.room?.game?.step === "live" && msg.room.game.videoId === "dQw4w9WgXcQ" && msg.room.game.endsAt,
+      (msg) =>
+        msg.room?.game?.step === "live" &&
+        msg.room.game.videoId === "dQw4w9WgXcQ" &&
+        msg.room.game.endsAt == null &&
+        msg.room.game.songCount === 1,
     );
     playlistDj.send({
       type: "action",

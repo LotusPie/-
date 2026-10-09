@@ -360,7 +360,11 @@ function blankGame(kind) {
 
 function start(room, kind) {
   if (kind === "dj") return beginDj(room);
-  return { error: "沒有這個遊戲。" };
+  if (!["prompt", "vibe", "score"].includes(kind)) return { error: "沒有這個遊戲。" };
+  if (!active(room).length) return { error: "現在沒有人在線上。" };
+  room.phase = "playing";
+  room.game = blankGame(kind);
+  return draw(room, true);
 }
 
 function draw(room, force) {
