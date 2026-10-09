@@ -6,8 +6,9 @@ function signed(value) {
 }
 
 function modeName(mode) {
-  if (mode === "playlist") return "貼歌單";
-  if (mode === "own") return "自行選歌";
+  if (mode === 1) return "一首歌";
+  if (mode === 2) return "二首歌";
+  if (mode === 3) return "三首歌";
   return "";
 }
 
@@ -45,12 +46,12 @@ const CARD_COPY = {
     detail: "只有本輪迪爵、還在選模式時能用。轉過一次之後，還可以再轉一次。",
   },
   mode: {
-    short: "指定下一次怎麼播",
-    detail: "你選自行選歌或貼歌單。下一次轉盤會落在這個模式。若還在選模式，這一轉就用它。",
+    short: "指定下一轉幾首歌",
+    detail: "你選一首歌、二首歌或三首歌。下一次轉盤會落在這個首數。若還在轉，這一轉就用它。",
   },
   extra: {
     short: "這一輪多播一首",
-    detail: "貼歌單這輪改成播四首，要換到第五首才結束。自行選歌則可以再貼一支。",
+    detail: "這一輪多播一首。一首會變成兩首，兩首變三首，三首變四首。",
   },
   next: {
     short: "點名下一位迪爵",
@@ -131,11 +132,14 @@ export function CardDesk({ room, youId, act }) {
                   </div>
                   {selected && pendingSpec?.needs === "mode" ? (
                     <div className="card-picks">
-                      <button className="secondary" type="button" onClick={() => play(pending, { mode: "own" })}>
-                        自行選歌
+                      <button className="secondary" type="button" onClick={() => play(pending, { songs: 1 })}>
+                        一首歌
                       </button>
-                      <button className="secondary" type="button" onClick={() => play(pending, { mode: "playlist" })}>
-                        貼歌單
+                      <button className="secondary" type="button" onClick={() => play(pending, { songs: 2 })}>
+                        二首歌
+                      </button>
+                      <button className="secondary" type="button" onClick={() => play(pending, { songs: 3 })}>
+                        三首歌
                       </button>
                     </div>
                   ) : null}

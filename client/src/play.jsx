@@ -199,7 +199,7 @@ export function Lobby({ onStart, onLeave }) {
       <button className="game-choice dj" type="button" onClick={() => onStart("dj")}>
         <span className="kicker">乘客玩</span>
         <strong>如果我是迪爵</strong>
-        <span>自行選歌播一首。貼歌單接著播三首。</span>
+        <span>轉盤決定播一首、兩首或三首。</span>
       </button>
       {leaving ? (
         <div className="confirm">

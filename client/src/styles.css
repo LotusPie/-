@@ -440,7 +440,7 @@ button.together {
   aspect-ratio: 1;
   border-radius: 50%;
   border: 4px solid var(--ink);
-  background: conic-gradient(var(--terra) 0 180deg, var(--sea) 180deg 360deg);
+  background: conic-gradient(var(--terra) 0 120deg, var(--sea) 120deg 240deg, var(--amber) 240deg 360deg);
   box-shadow: var(--shadow);
   position: relative;
   transition: transform 2.4s cubic-bezier(0.15, 0.75, 0.1, 1);
@@ -461,12 +461,10 @@ button.together {
   transition: transform 2.4s cubic-bezier(0.15, 0.75, 0.1, 1);
 }
 
-.wheel-label.own {
-  left: 23%;
-}
-
-.wheel-label.playlist {
-  left: 77%;
+.wheel-label {
+  left: 50%;
+  max-width: 30%;
+  font-size: 0.85rem;
 }
 
 .wheel-hub {

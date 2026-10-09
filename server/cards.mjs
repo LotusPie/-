@@ -172,13 +172,14 @@ function applyCard(room, playerId, cardId, msg) {
   }
 
   if (cardId === "mode") {
-    if (msg?.mode !== "own" && msg?.mode !== "playlist") return { error: "沒有這個模式。" };
+    const songs = songsOf(msg?.songs);
+    if (!songs) return { error: "沒有這個首數。" };
     if (game?.step === "pick") {
-      game.forcedMode = msg.mode;
+      game.forcedMode = songs;
       room.cards.pendingMode = null;
-      if ((game.wheelSpin || 0) > 0) game.wheelMode = msg.mode;
+      if ((game.wheelSpin || 0) > 0) game.wheelSongs = songs;
     } else {
-      room.cards.pendingMode = msg.mode;
+      room.cards.pendingMode = songs;
     }
     return { ok: true };
   }
@@ -221,10 +222,14 @@ export function playCard(room, playerId, msg) {
   return result?.passSeat ? result : { ok: true };
 }
 
+function songsOf(value) {
+  const n = typeof value === "number" ? value : Number(value);
+  return n === 1 || n === 2 || n === 3 ? n : null;
+}
+
 export function songLimit(game) {
-  if (game?.mode === "own") return game.extra ? 2 : 1;
-  if (game?.extra) return 4;
-  return 3;
+  const base = songsOf(game?.songs) || (game?.mode === "own" ? 1 : 3);
+  return base + (game?.extra ? 1 : 0);
 }
 
 export function takeLobbyQueue(room, game) {
@@ -254,13 +259,13 @@ export function clearSongCards(room, game) {
 }
 
 export function takeForcedMode(room, game, requested) {
-  const forced = game?.forcedMode || room.cards?.pendingMode || null;
-  if (forced === "own" || forced === "playlist") {
+  const forced = songsOf(game?.forcedMode ?? room.cards?.pendingMode);
+  if (forced) {
     if (game) game.forcedMode = null;
     if (room.cards) room.cards.pendingMode = null;
     return forced;
   }
-  return requested;
+  return songsOf(requested);
 }
 
 export function skipPassed(room, next, online, pool) {

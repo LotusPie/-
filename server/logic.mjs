@@ -629,9 +629,10 @@ export function serialize(room, viewerId) {
           endsAt: game.endsAt || null,
           songCount: game.songCount || 0,
           songLimit: game.kind === "dj" ? songLimit(game) : null,
+          songs: game.songs || null,
           extra: Boolean(game.extra),
           extraSpins: game.extraSpins || 0,
-          wheelMode: game.wheelMode || null,
+          wheelSongs: game.wheelSongs || null,
           wheelSpin: game.wheelSpin || 0,
           ratings: Object.fromEntries(
             Object.entries(game.ratings || {}).map(([id, value]) => [id, id === viewerId ? value : true]),

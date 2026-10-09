@@ -25,7 +25,17 @@ function loadYoutubeApi() {
 
 const WHEEL_MS = 2500;
 
-function ModeWheel({ wheelMode, wheelSpin }) {
+const SONG_SLICES = [
+  { songs: 1, label: "一首歌", mid: 60 },
+  { songs: 2, label: "二首歌", mid: 180 },
+  { songs: 3, label: "三首歌", mid: 300 },
+];
+
+function songLabel(count) {
+  return SONG_SLICES.find((slice) => slice.songs === count)?.label || "";
+}
+
+function ModeWheel({ wheelSongs, wheelSpin }) {
   const turns = useRef(0);
   const [angle, setAngle] = useState(0);
   useEffect(() => {
@@ -34,20 +44,32 @@ function ModeWheel({ wheelMode, wheelSpin }) {
       setAngle(0);
       return;
     }
-    const landing = wheelMode === "playlist" ? 90 : -90;
+    const mid = SONG_SLICES.find((slice) => slice.songs === wheelSongs)?.mid ?? 60;
     turns.current += 5;
-    setAngle(turns.current * 360 + landing);
-  }, [wheelSpin, wheelMode]);
+    setAngle(turns.current * 360 - mid);
+  }, [wheelSpin, wheelSongs]);
   return (
     <div className="wheel-wrap">
       <div className="wheel-pointer" aria-hidden="true" />
       <div className="wheel" style={{ transform: `rotate(${angle}deg)` }}>
-        <span className="wheel-label own" style={{ transform: `translate(-50%, -50%) rotate(${-angle}deg)` }}>
-          自行選歌
-        </span>
-        <span className="wheel-label playlist" style={{ transform: `translate(-50%, -50%) rotate(${-angle}deg)` }}>
-          貼歌單
-        </span>
+        {SONG_SLICES.map((slice) => {
+          const rad = (slice.mid * Math.PI) / 180;
+          const left = 50 + Math.sin(rad) * 30;
+          const top = 50 - Math.cos(rad) * 30;
+          return (
+            <span
+              key={slice.songs}
+              className="wheel-label"
+              style={{
+                left: `${left}%`,
+                top: `${top}%`,
+                transform: `translate(-50%, -50%) rotate(${-angle}deg)`,
+              }}
+            >
+              {slice.label}
+            </span>
+          );
+        })}
         <div className="wheel-hub" />
       </div>
     </div>
@@ -561,15 +583,15 @@ export function DjGame({ room, youId, act }) {
   }, [game.step]);
 
   useEffect(() => {
-    if (!mine || game.step !== "pick" || !game.wheelSpin || !game.wheelMode) return undefined;
+    if (!mine || game.step !== "pick" || !game.wheelSpin || !game.wheelSongs) return undefined;
     if ((game.extraSpins || 0) > 0) return undefined;
-    const mode = game.wheelMode;
+    const songs = game.wheelSongs;
     const reduce =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = setTimeout(() => actRef.current({ name: "djMode", mode }), reduce ? 0 : WHEEL_MS);
+    const timer = setTimeout(() => actRef.current({ name: "djMode", songs }), reduce ? 0 : WHEEL_MS);
     return () => clearTimeout(timer);
-  }, [mine, game.step, game.wheelSpin, game.wheelMode, game.extraSpins]);
+  }, [mine, game.step, game.wheelSpin, game.wheelSongs, game.extraSpins]);
 
   return (
     <div className="dj-layout dj-game">
@@ -582,15 +604,16 @@ export function DjGame({ room, youId, act }) {
 
       {game.step === "pick" && (
         <section className="stack">
-          <ModeWheel wheelMode={game.wheelMode} wheelSpin={game.wheelSpin || 0} />
+          <ModeWheel wheelSongs={game.wheelSongs} wheelSpin={game.wheelSpin || 0} />
+          <p className="turn-line">{game.wheelSongs ? songLabel(game.wheelSongs) : "一首歌、二首歌、三首歌，機會一樣。"}</p>
           {mine ? (
             <button
               className="primary xl"
               type="button"
               disabled={(game.wheelSpin || 0) > 0 && !(game.extraSpins > 0)}
               onClick={() => {
-                const mode = Math.random() < 0.5 ? "own" : "playlist";
-                act({ name: "djSpin", mode });
+                const songs = 1 + Math.floor(Math.random() * 3);
+                act({ name: "djSpin", songs });
               }}
             >
               {(game.wheelSpin || 0) > 0 && game.extraSpins > 0 ? "再轉一次" : (game.wheelSpin || 0) > 0 ? "轉盤轉著" : "轉一下"}
@@ -603,7 +626,7 @@ export function DjGame({ room, youId, act }) {
 
       {game.step === "enter" && (
         <section className="stack">
-          <p className="turn-line">{game.mode === "playlist" ? "貼歌單" : "自行選歌"}</p>
+          <p className="turn-line">{songLabel(game.songs) || (game.mode === "playlist" ? "接著播" : "一首歌")}</p>
           {mine ? (
             <form
               className="stack"
@@ -613,7 +636,7 @@ export function DjGame({ room, youId, act }) {
               }}
             >
               <label>
-                {game.mode === "playlist" ? "第一首的連結" : "YouTube 連結"}
+                YouTube 連結
                 <input
                   className="song-input"
                   type="url"
@@ -628,15 +651,13 @@ export function DjGame({ room, youId, act }) {
               </label>
               <p className="hint">
                 {game.mode === "playlist"
-                  ? game.extra
-                    ? "貼你真的會開的那一首。只有這支手機會接著播推薦，大家一起看同一支，播完四首就停。"
-                    : "貼你真的會開的那一首。只有這支手機會接著播推薦，大家一起看同一支，播完三首就停。"
+                  ? `貼你要播的第一首。只有這支手機會接著播推薦，大家一起看同一支，播完 ${game.songLimit || game.songs || 3} 首就停。`
                   : game.extra
-                    ? "這一輪可以再貼一支。只播完這兩支。大家一起看這支影片。"
-                    : "只播這一支。大家一起看這支影片。"}
+                    ? "只播這一支。大家一起看這支影片。播完可以再貼一支。"
+                    : "只播這一支。大家一起看這支影片。播完這一輪就結束。"}
               </p>
               <button className="primary xl" type="submit">
-                {game.mode === "playlist" ? (game.extra ? "開始，接著播四首" : "開始，接著播三首") : game.songCount > 0 ? "再播這一首" : "這首開始播"}
+                {game.mode === "playlist" ? `開始，接著播 ${game.songLimit || game.songs || 3} 首` : game.songCount > 0 ? "再播這一首" : "這首開始播"}
               </button>
             </form>
           ) : (

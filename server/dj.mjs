@@ -85,7 +85,8 @@ function freshRound(room, game, djId, round) {
     ratings: {},
     endsAt: null,
     songCount: 0,
-    wheelMode: null,
+    songs: null,
+    wheelSongs: null,
     wheelSpin: 0,
     extra: false,
     extraSpins: 0,
@@ -185,7 +186,7 @@ export function handleDjAction(room, playerId, msg) {
   }
 
   if (name === "djBack") {
-    return { error: "轉完就不能重選模式。" };
+    return { error: "轉完就不能重選。" };
   }
 
   if (name === "djSpin") {
@@ -193,20 +194,21 @@ export function handleDjAction(room, playerId, msg) {
     if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
     if ((game.wheelSpin || 0) > 0 && !(game.extraSpins > 0)) return { error: "轉過了。" };
     if ((game.wheelSpin || 0) > 0) game.extraSpins -= 1;
-    const mode = takeForcedMode(room, game, msg.mode);
-    if (mode !== "own" && mode !== "playlist") return { error: "沒有這個模式。" };
-    game.wheelMode = mode;
+    const songs = takeForcedMode(room, game, msg.songs);
+    if (!songs) return { error: "沒有這個首數。" };
+    game.wheelSongs = songs;
     game.wheelSpin = (game.wheelSpin || 0) + 1;
     return { ok: true };
   }
 
   if (name === "djMode") {
-    if (game.step !== "pick") return { error: "現在還不能選模式。" };
+    if (game.step !== "pick") return { error: "現在還不能選首數。" };
     if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
     if ((game.wheelSpin || 0) > 0 && (game.extraSpins || 0) > 0) return { error: "還可以再轉一次。" };
-    const mode = takeForcedMode(room, game, msg.mode);
-    if (mode !== "own" && mode !== "playlist") return { error: "沒有這個模式。" };
-    game.mode = mode;
+    const songs = takeForcedMode(room, game, msg.songs);
+    if (!songs) return { error: "沒有這個首數。" };
+    game.songs = songs;
+    game.mode = songs === 1 ? "own" : "playlist";
     game.step = "enter";
     return { ok: true };
   }
