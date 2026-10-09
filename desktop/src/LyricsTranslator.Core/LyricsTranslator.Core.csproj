@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>LyricsTranslator.Core</RootNamespace>
+    <AssemblyName>LyricsTranslator.Core</AssemblyName>
+    <Description>Now-playing lyrics lookup, cache, and Traditional Chinese translation pipeline.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+  </ItemGroup>
+</Project>
