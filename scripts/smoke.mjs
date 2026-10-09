@@ -60,6 +60,7 @@ function testDecksAndCopy() {
     "client/src/play.jsx",
     "client/src/dj.jsx",
     "client/src/cards.jsx",
+    "client/src/profile.jsx",
     "client/src/watch-sync.js",
     "client/src/useRoom.js",
     "server/dj.mjs",
@@ -101,6 +102,7 @@ function testLogic() {
   assert.equal(scoreOf(room, a), 0);
   testDj();
   testCards();
+  testProfile();
 }
 
 function testDj() {
@@ -755,6 +757,97 @@ function testWatchSync() {
   const app = fs.readFileSync(path.join(root, "client/src/App.jsx"), "utf8");
   assert.equal(app.includes("PageSwitch"), true);
   assert.equal(app.includes("is-parked"), true);
+}
+
+function testProfile() {
+  const { room, ids } = freshRoom(["阿凱", "小魚"]);
+  const [a, b] = ids;
+  const before = serialize(room, b);
+  const blank = before.players.find((player) => player.id === a).profile;
+  assert.equal(blank.emoji, "🎵");
+  assert.equal(blank.photo, "");
+  assert.equal(blank.line, "");
+  assert.equal(blank.from, "");
+  assert.equal(blank.music, "");
+  assert.equal(before.page, undefined);
+
+  assert.equal(
+    applyAction(room, a, {
+      name: "profileSave",
+      emoji: "🎸",
+      line: "這趟想聽老歌",
+      nickname: "阿凱",
+    }).ok,
+    true,
+  );
+  let mine = serialize(room, a).players.find((player) => player.id === a);
+  assert.equal(mine.nickname, "阿凱");
+  assert.equal(mine.profile.emoji, "🎸");
+  assert.equal(mine.profile.line, "這趟想聽老歌");
+  assert.equal(mine.profile.from, "");
+  assert.equal(mine.profile.music, "");
+
+  assert.equal(
+    applyAction(room, a, {
+      name: "profileSave",
+      emoji: "🌙",
+      nickname: "   ",
+      line: "歌".repeat(50),
+      from: "台南",
+      music: "城市民謠",
+    }).ok,
+    true,
+  );
+  mine = room.players.find((player) => player.id === a);
+  assert.equal(mine.nickname, "阿凱");
+  assert.equal([...mine.profile.line].length, 40);
+  assert.equal(mine.profile.from, "台南");
+  assert.equal(mine.profile.music, "城市民謠");
+  assert.equal(mine.profile.emoji, "🌙");
+
+  assert.match(applyAction(room, a, { name: "profileSave", nickname: "一二三四五六七八九十一二三" }).error, /12/);
+  assert.equal(room.players.find((player) => player.id === a).nickname, "阿凱");
+
+  const tiny =
+    "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+  assert.equal(applyAction(room, a, { name: "profileSave", photo: tiny, emoji: "🎧" }).ok, true);
+  const seen = serialize(room, b);
+  assert.equal(seen.ranking.find((item) => item.id === a).profile.photo, tiny);
+  assert.equal(seen.players.find((player) => player.id === a).profile.emoji, "🎧");
+
+  assert.match(applyAction(room, a, { name: "profileSave", photo: "data:image/gif;base64,AAAA" }).error, /沒辦法用/);
+  assert.equal(room.players.find((player) => player.id === a).profile.photo, tiny);
+
+  const raw = Buffer.alloc(200 * 1024 + 8, 7);
+  const big = `data:image/jpeg;base64,${raw.toString("base64")}`;
+  assert.match(applyAction(room, a, { name: "profileSave", photo: big }).error, /200KB/);
+  assert.equal(room.players.find((player) => player.id === a).profile.photo, tiny);
+
+  assert.equal(applyAction(room, a, { name: "profileSave", photo: "", emoji: "不是" }).ok, true);
+  assert.equal(room.players.find((player) => player.id === a).profile.photo, "");
+  assert.equal(room.players.find((player) => player.id === a).profile.emoji, "🎵");
+
+  const profile = fs.readFileSync(path.join(root, "client/src/profile.jsx"), "utf8");
+  const play = fs.readFileSync(path.join(root, "client/src/play.jsx"), "utf8");
+  const app = fs.readFileSync(path.join(root, "client/src/App.jsx"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server/index.mjs"), "utf8");
+  for (const emoji of ["🎵", "🎧", "🎸", "🎤", "🚗", "🧳", "🌙", "⭐", "🍵", "🌊"]) {
+    assert.equal(profile.includes(emoji), true, emoji);
+  }
+  assert.equal(profile.includes("來自"), true);
+  assert.equal(profile.includes("喜歡的音樂"), true);
+  assert.equal(profile.includes("這個人還沒留下一句話。"), true);
+  assert.equal(profile.includes("移除照片"), true);
+  assert.equal(play.includes('["me", "個人"]'), true);
+  assert.equal(play.includes("who-btn"), true);
+  assert.equal(play.includes("setViewingId"), true);
+  assert.equal(app.includes('value === "me"'), true);
+  assert.equal(app.includes('next !== "me"'), true);
+  const choose = app.slice(app.indexOf("function choosePage"), app.indexOf("useEffect", app.indexOf("function choosePage")));
+  assert.equal(choose.includes("act("), false);
+  assert.equal(choose.includes("setPage(next)"), true);
+  assert.equal(server.includes('msg?.name === "profileSave"'), true);
+  assert.equal(server.includes("buf.length > 8000"), true);
 }
 
 try {

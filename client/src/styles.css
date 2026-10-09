@@ -1069,6 +1069,7 @@ footer p {
 
   .app.in-room > .play-stage,
   .app.in-room > .score-page,
+  .app.in-room > .profile-page,
   .app.in-room > .banner {
     grid-column: 1;
   }
@@ -1150,8 +1151,8 @@ html {
   transform: translateX(-50%);
   width: min(100%, 560px);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
   margin: 0;
   padding:
     8px
@@ -1170,9 +1171,9 @@ html {
   background: var(--card);
   color: var(--ink);
   font-weight: 700;
-  font-size: clamp(0.98rem, 3.8vw, 1.08rem);
-  line-height: 1.2;
-  padding: 10px 8px;
+  font-size: clamp(0.78rem, 2.8vw, 0.95rem);
+  line-height: 1.15;
+  padding: 8px 4px;
   white-space: normal;
 }
 

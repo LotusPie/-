@@ -167,7 +167,7 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 
 wss.on("connection", (ws) => {
   ws.on("message", (buf) => {
-    if (buf.length > 8000) {
+    if (buf.length > 340 * 1024) {
       send(ws, { type: "error", message: "訊息太長了。" });
       return;
     }
@@ -176,6 +176,10 @@ wss.on("connection", (ws) => {
       msg = JSON.parse(buf.toString());
     } catch {
       send(ws, { type: "error", message: "讀不懂這個訊息。" });
+      return;
+    }
+    if (buf.length > 8000 && !(msg?.type === "action" && msg?.name === "profileSave")) {
+      send(ws, { type: "error", message: "訊息太長了。" });
       return;
     }
     if (!msg || typeof msg !== "object") return;

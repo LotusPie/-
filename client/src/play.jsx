@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ProfileView } from "./profile.jsx";
 
 export function nameOf(room, id) {
   return room.players.find((player) => player.id === id)?.nickname || "旅伴";
@@ -129,17 +130,17 @@ export function Roster({ room, youId, turnId, bumped }) {
   );
 }
 
-export function Ranking({ ranking, youId }) {
+export function Ranking({ ranking, youId, onOpen }) {
   return (
     <ol className="ranking">
       {ranking.map((row) => (
         <li key={row.id} className={row.id === youId ? "me" : ""}>
           <span className="rank">{rankWord(row.rank)}</span>
-          <span className="who">
+          <button type="button" className="who who-btn" onClick={() => onOpen?.(row.id)}>
             {row.nickname}
             {row.id === youId ? "（你）" : ""}
             {!row.connected ? " · 離線" : ""}
-          </span>
+          </button>
           <strong>{row.scoreHidden ? "?" : row.score}</strong>
         </li>
       ))}
@@ -152,6 +153,7 @@ export function PageSwitch({ page, onChange }) {
     ["play", "如果我是迪爵"],
     ["cards", "我的卡牌"],
     ["rank", "積分排名"],
+    ["me", "個人"],
   ];
   return (
     <nav className="page-switch" aria-label="切換頁面">
@@ -170,6 +172,7 @@ export function PageSwitch({ page, onChange }) {
 }
 
 export function ScorePage({ room, youId }) {
+  const [viewingId, setViewingId] = useState("");
   if (!room) {
     return (
       <section className="panel score-page">
@@ -179,11 +182,15 @@ export function ScorePage({ room, youId }) {
     );
   }
   const hasScore = room.players.some((player) => player.score !== 0);
+  const viewed = room.players.find((player) => player.id === viewingId) || null;
   return (
     <section className="panel score-page stack">
       <h2>積分排名</h2>
       {hasScore ? null : <p className="hint">分數會在遊戲裡慢慢長出來。現在大家都是 0。</p>}
-      <Ranking ranking={room.ranking || []} youId={youId} />
+      <Ranking ranking={room.ranking || []} youId={youId} onOpen={setViewingId} />
+      {viewed ? (
+        <ProfileView nickname={viewed.nickname} profile={viewed.profile} onClose={() => setViewingId("")} />
+      ) : null}
     </section>
   );
 }

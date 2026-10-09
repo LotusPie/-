@@ -5,6 +5,11 @@ import { buyCard, clearRoundCards, forgetPlayer, hiddenFrom, initCards, playCard
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
 const NOTE_MAX = 40;
+const AVATARS = ["🎵", "🎧", "🎸", "🎤", "🚗", "🧳", "🌙", "⭐", "🍵", "🌊"];
+const LINE_MAX = 40;
+const FROM_MAX = 24;
+const MUSIC_MAX = 40;
+const PHOTO_MAX = 200 * 1024;
 
 const DECKS = { prompt: promptDeck, vibe: vibeDeck, score: scoreDeck };
 
@@ -84,6 +89,62 @@ function isOnline(room, id) {
 
 function findPlayer(room, id) {
   return room.players.find((player) => player.id === id) || null;
+}
+
+function clipField(raw, max) {
+  const text = String(raw ?? "")
+    .replace(/[\u0000-\u001f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+  return [...text].slice(0, max).join("");
+}
+
+function photoByteLength(dataUrl) {
+  if (typeof dataUrl !== "string" || dataUrl.length > 280 * 1024) return null;
+  const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if (!match) return null;
+  const body = match[2];
+  const padding = body.endsWith("==") ? 2 : body.endsWith("=") ? 1 : 0;
+  return Math.floor((body.length * 3) / 4) - padding;
+}
+
+export function presentProfile(player) {
+  const profile = player?.profile || {};
+  return {
+    emoji: AVATARS.includes(profile.emoji) ? profile.emoji : AVATARS[0],
+    photo: typeof profile.photo === "string" ? profile.photo : "",
+    line: typeof profile.line === "string" ? profile.line : "",
+    from: typeof profile.from === "string" ? profile.from : "",
+    music: typeof profile.music === "string" ? profile.music : "",
+  };
+}
+
+function saveProfile(room, playerId, msg) {
+  const player = findPlayer(room, playerId);
+  if (!player) return { error: "你不在這個房間。" };
+  let photo = "";
+  if (msg?.photo) {
+    const bytes = photoByteLength(msg.photo);
+    if (bytes == null) return { error: "這張照片沒辦法用。" };
+    if (bytes > PHOTO_MAX) return { error: "照片請小於 200KB。" };
+    photo = msg.photo;
+  }
+  const nickRaw = String(msg?.nickname ?? "")
+    .replace(/[\u0000-\u001f]/g, "")
+    .trim();
+  if (nickRaw) {
+    const parsed = normalizeNickname(nickRaw);
+    if (parsed.error) return { error: parsed.error };
+    player.nickname = parsed.nickname;
+  }
+  player.profile = {
+    emoji: AVATARS.includes(msg?.emoji) ? msg.emoji : AVATARS[0],
+    photo,
+    line: clipField(msg?.line, LINE_MAX),
+    from: clipField(msg?.from, FROM_MAX),
+    music: clipField(msg?.music, MUSIC_MAX),
+  };
+  return { ok: true };
 }
 
 export function rankingOf(players) {
@@ -557,6 +618,7 @@ export function applyAction(room, playerId, msg) {
   if (name === "cardBuy") return buyCard(room, playerId, msg.card);
   if (name === "cardSpin") return spinDraw(room, playerId);
   if (name === "cardSpinTake") return takeDraw(room, playerId);
+  if (name === "profileSave") return saveProfile(room, playerId, msg);
   if (name === "cardPlay") {
     const played = playCard(room, playerId, msg);
     if (played?.passSeat) return advanceDj(room, "skip");
@@ -599,11 +661,17 @@ export function serialize(room, viewerId) {
         score: scoreHidden ? null : player.score,
         scoreHidden,
         connected: player.connected,
+        profile: presentProfile(player),
       };
     }),
     ranking: rankingOf(room.players).map((row) => {
       const scoreHidden = hiddenFrom(room, row.id, viewerId);
-      return { ...row, score: scoreHidden ? null : row.score, scoreHidden };
+      return {
+        ...row,
+        score: scoreHidden ? null : row.score,
+        scoreHidden,
+        profile: presentProfile(findPlayer(room, row.id)),
+      };
     }),
     cards: presentCards(room, viewerId),
     game: game

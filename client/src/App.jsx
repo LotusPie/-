@@ -3,6 +3,7 @@ import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
 import { DjGame } from "./dj.jsx";
 import { CardDesk } from "./cards.jsx";
 import { Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
+import { ProfilePage } from "./profile.jsx";
 
 async function writeText(text) {
   try {
@@ -27,7 +28,7 @@ const PAGE_KEY = "on-the-trip-page";
 function readLocalPage() {
   try {
     const value = sessionStorage.getItem(PAGE_KEY);
-    if (value === "play" || value === "cards" || value === "rank") return value;
+    if (value === "play" || value === "cards" || value === "rank" || value === "me") return value;
   } catch {
     // this browser is not keeping local page state
   }
@@ -63,7 +64,7 @@ export default function App() {
   }, [page]);
 
   function choosePage(next) {
-    if (next !== "play" && next !== "cards" && next !== "rank") return;
+    if (next !== "play" && next !== "cards" && next !== "rank" && next !== "me") return;
     setPage(next);
   }
 
@@ -158,6 +159,7 @@ export default function App() {
             <p className="hint">進房間之後，這裡會顯示目前的手牌和牌店。</p>
           </section>
         ))}
+      {page === "me" && <ProfilePage key={youId || "out"} room={room} youId={youId} act={act} />}
       <footer>
         <p>私人房間 · 沒有帳號 · 不會公開列出</p>
         {room && (
