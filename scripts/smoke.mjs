@@ -403,6 +403,38 @@ function testCards() {
   assert.equal(draw.room.cards.draws, 1);
 }
 
+
+  const spun = freshRoom(["阿凱", "小魚"]);
+  const spinId = spun.ids[0];
+  const random = Math.random;
+  try {
+    Math.random = () => 0.4;
+    assert.equal(applyAction(spun.room, spinId, { name: "cardSpin" }).ok, true);
+    assert.deepEqual(spun.room.cards.hands[spinId], ["respin"]);
+    const readyAt = spun.room.cards.spinReady[spinId];
+    assert.ok(readyAt > Date.now() + 29 * 60 * 1000);
+    assert.equal(spun.room.cards.bonusSpins[spinId], 1);
+    const mine = serialize(spun.room, spinId).cards.draw;
+    const other = serialize(spun.room, spun.ids[1]).cards.draw;
+    assert.equal(mine.lastId, "respin");
+    assert.equal(mine.bonus, 1);
+    assert.equal(other.lastId, null);
+    assert.equal(other.bonus, 0);
+    assert.equal(mine.missing.length, 0);
+    assert.equal(mine.slices.reduce((sum, slice) => sum + slice.weight, 0), 100);
+    Math.random = () => 0;
+    assert.equal(applyAction(spun.room, spinId, { name: "cardSpin" }).ok, true);
+    assert.equal(spun.room.cards.spinReady[spinId], readyAt);
+    assert.deepEqual(spun.room.cards.hands[spinId], ["respin", "peek"]);
+    assert.equal(spun.room.cards.bonusSpins[spinId] || 0, 0);
+    assert.match(applyAction(spun.room, spinId, { name: "cardSpin" }).error, /還沒到/);
+    spun.room.cards.hands[spinId].push("hide");
+    assert.match(applyAction(spun.room, spinId, { name: "cardSpin" }).error, /手牌滿了/);
+    assert.equal(spun.room.cards.spinReady[spinId], readyAt);
+  } finally {
+    Math.random = random;
+  }
+
 function openClient(port) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { nameOf } from "./play.jsx";
 
 function signed(value) {
@@ -63,7 +63,139 @@ const CARD_COPY = {
   },
 };
 
-export function CardDesk({ room, youId, act }) {
+
+const DRAW_WHEEL_MS = 2400;
+
+function sliceMid(slices, id) {
+  const total = slices.reduce((sum, slice) => sum + slice.weight, 0) || 1;
+  let cursor = 0;
+  for (const slice of slices) {
+    const span = (slice.weight / total) * 360;
+    if (slice.id === id) return cursor + span / 2;
+    cursor += span;
+  }
+  return 0;
+}
+
+function wheelBackground(slices) {
+  const total = slices.reduce((sum, slice) => sum + slice.weight, 0) || 1;
+  const colors = ["var(--terra)", "var(--sea)", "var(--amber)"];
+  let cursor = 0;
+  const stops = slices.map((slice, index) => {
+    const start = cursor;
+    cursor += (slice.weight / total) * 360;
+    return colors[index % colors.length] + " " + start + "deg " + cursor + "deg";
+  });
+  return "conic-gradient(" + stops.join(", ") + ")";
+}
+
+function remainText(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return hours + " 小時 " + minutes + " 分";
+  if (minutes > 0) return minutes + " 分 " + seconds + " 秒";
+  return seconds + " 秒";
+}
+
+function DrawWheel({ draw, act, error, handFull }) {
+  const slices = draw?.slices || [];
+  const lastAt = draw?.lastAt || 0;
+  const lastId = draw?.lastId || null;
+  const seen = useRef(lastAt);
+  const errorSeen = useRef(error || "");
+  const [angle, setAngle] = useState(() => (lastId ? -sliceMid(slices, lastId) : 0));
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const turns = useRef(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!lastAt || lastAt === seen.current) return undefined;
+    seen.current = lastAt;
+    const reduce =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduce) turns.current += 5;
+    setAngle(turns.current * 360 - sliceMid(slices, lastId));
+    const timer = setTimeout(() => setBusy(false), reduce ? 0 : DRAW_WHEEL_MS);
+    return () => clearTimeout(timer);
+  }, [lastAt, lastId, slices]);
+
+  useEffect(() => {
+    if (busy && error && error !== errorSeen.current) setBusy(false);
+  }, [busy, error]);
+
+  const wait = Math.max(0, (draw?.readyAt || 0) - now);
+  const bonus = draw?.bonus || 0;
+  const cooling = wait > 0;
+  const won = slices.find((slice) => slice.id === lastId);
+  const canSpin = !busy && !handFull && (bonus > 0 || !cooling);
+  let label = "轉一下";
+  if (busy) label = "轉盤轉著";
+  else if (handFull) label = "手牌滿了";
+  else if (bonus > 0) label = "再轉一次";
+  else if (cooling) label = "還要 " + remainText(wait);
+
+  return (
+    <div className="draw-panel">
+      <div className="draw-wheel-wrap">
+        <div className="draw-pointer" aria-hidden="true" />
+        <div className="draw-wheel" style={{ transform: "rotate(" + angle + "deg)", background: wheelBackground(slices) }}>
+          {slices.filter((slice) => slice.weight >= 8).map((slice) => {
+            const mid = sliceMid(slices, slice.id);
+            const rad = (mid * Math.PI) / 180;
+            const left = 50 + Math.sin(rad) * 32;
+            const top = 50 - Math.cos(rad) * 32;
+            return (
+              <span
+                key={slice.id}
+                className="draw-wheel-label"
+                style={{
+                  left: left + "%",
+                  top: top + "%",
+                  transform: "translate(-50%, -50%) rotate(" + -angle + "deg)",
+                }}
+              >
+                {slice.name}
+              </span>
+            );
+          })}
+          <div className="draw-hub" />
+        </div>
+      </div>
+      {won ? (
+        <p className="draw-result">抽到 {won.name}{won.id === "respin" ? "，可以立刻再轉" : ""}</p>
+      ) : (
+        <p className="draw-wait">轉一下，牌會進你的手牌。</p>
+      )}
+      {cooling ? (
+        <p className="draw-wait">{bonus > 0 ? "這一轉可以再轉。下一轉還要 " + remainText(wait) : "下一轉還要 " + remainText(wait)}</p>
+      ) : null}
+      {handFull ? <p className="hint">手牌滿了，先用掉一張。</p> : null}
+      {draw?.missing?.length ? <p className="hint">這些牌沒有，已跳過。</p> : null}
+      <button
+        className="primary draw-spin"
+        type="button"
+        disabled={!canSpin}
+        onClick={() => {
+          errorSeen.current = error || "";
+          setBusy(true);
+          act({ name: "cardSpin" });
+        }}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
+export function CardDesk({ room, youId, act, error }) {
   const cards = room.cards;
   const [pending, setPending] = useState(null);
   const [detailId, setDetailId] = useState(null);

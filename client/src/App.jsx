@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
 import { DjGame } from "./dj.jsx";
 import { CardDesk } from "./cards.jsx";
-import { Home, Lobby, PageSwitch, Roster, ScorePage } from "./play.jsx";
+import { Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
 
 async function writeText(text) {
   try {
@@ -48,8 +48,6 @@ export default function App() {
   const [code, setCode] = useState(linkCode);
   const [toast, setToast] = useState("");
   const [page, setPage] = useState(readLocalPage);
-  const [bumped, setBumped] = useState({});
-  const prevScores = useRef({});
   const invited = !room && linkCode && code === linkCode ? linkCode : "";
 
   useEffect(() => {
@@ -68,24 +66,6 @@ export default function App() {
     if (next !== "play" && next !== "cards" && next !== "rank") return;
     setPage(next);
   }
-
-  useEffect(() => {
-    if (!room) return undefined;
-    const next = {};
-    let changed = false;
-    for (const player of room.players) {
-      const previous = prevScores.current[player.id];
-      if (previous != null && previous !== player.score) {
-        next[player.id] = true;
-        changed = true;
-      }
-      prevScores.current[player.id] = player.score;
-    }
-    if (!changed) return undefined;
-    setBumped(next);
-    const timer = setTimeout(() => setBumped({}), 700);
-    return () => clearTimeout(timer);
-  }, [room]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -113,7 +93,6 @@ export default function App() {
     setToast(ok ? "連結複製好了" : "複製沒成功，請自己選取網址");
   }
 
-  const turnId = room?.game?.kind === "dj" ? room.game.djId : null;
   const returning = !room && status === "connecting" && Boolean(loadSession()?.playerId);
   const pending = status === "connecting";
   const onPlay = page === "play";
@@ -135,7 +114,6 @@ export default function App() {
         </div>
       </header>
 
-      {room && <Roster room={room} youId={youId} turnId={turnId} bumped={bumped} />}
       {room && status !== "open" && <p className="banner">正在重新連上房間…</p>}
       {room && error && (
         <p className="banner" role="alert">
@@ -173,7 +151,7 @@ export default function App() {
       {page === "rank" && <ScorePage room={room} youId={youId} />}
       {page === "cards" &&
         (room ? (
-          <CardDesk room={room} youId={youId} act={act} />
+          <CardDesk room={room} youId={youId} act={act} error={error} />
         ) : (
           <section className="panel card-page stack">
             <h2>我的卡牌</h2>

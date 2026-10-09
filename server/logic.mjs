@@ -1,6 +1,6 @@
 import { promptDeck, vibeDeck, scoreDeck } from "./decks.mjs";
 import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction } from "./dj.mjs";
-import { buyCard, clearRoundCards, forgetPlayer, hiddenFrom, initCards, playCard, presentCards, songLimit } from "./cards.mjs";
+import { buyCard, clearRoundCards, forgetPlayer, hiddenFrom, initCards, playCard, presentCards, songLimit, spinDraw } from "./cards.mjs";
 
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
@@ -555,6 +555,7 @@ export function applyAction(room, playerId, msg) {
   if (name === "start") return start(room, msg.game);
   if (name === "lobby") return lobby(room);
   if (name === "cardBuy") return buyCard(room, playerId, msg.card);
+  if (name === "cardSpin") return spinDraw(room, playerId);
   if (name === "cardPlay") {
     const played = playCard(room, playerId, msg);
     if (played?.passSeat) return advanceDj(room, "skip");

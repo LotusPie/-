@@ -18,6 +18,89 @@ export const CARD_LIST = [
 
 const CARD_IDS = new Set(CARD_LIST.map((card) => card.id));
 
+export const DRAW_SPIN_MS = 30 * 60 * 1000;
+
+const DRAW_WEIGHTS = [
+  ["peek", 14],
+  ["pass", 12],
+  ["next", 12],
+  ["respin", 10],
+  ["block", 10],
+  ["shield", 8],
+  ["extra", 8],
+  ["mode", 8],
+  ["hide", 8],
+  ["steal", 5],
+  ["double", 3],
+  ["swap", 2],
+];
+
+function drawTable() {
+  const slices = [];
+  const missing = [];
+  for (const [id, weight] of DRAW_WEIGHTS) {
+    const spec = CARD_LIST.find((card) => card.id === id);
+    if (!spec) {
+      missing.push(id);
+      continue;
+    }
+    slices.push({ id, name: spec.name, weight });
+  }
+  return { slices, missing };
+}
+
+function ensureSpin(cards) {
+  if (!cards.spinReady) cards.spinReady = {};
+  if (!cards.bonusSpins) cards.bonusSpins = {};
+  if (!cards.lastSpin) cards.lastSpin = {};
+}
+
+export function spinDraw(room, playerId, now = Date.now()) {
+  const player = findPlayer(room, playerId);
+  if (!player) return { error: "你不在這個房間。" };
+  if (!room.cards) return { error: "現在不能抽牌。" };
+  const hand = handOf(room, playerId);
+  if (hand.length >= HAND_MAX) return { error: "手牌滿了，先用掉一張。" };
+  const cards = room.cards;
+  ensureSpin(cards);
+  const readyAt = cards.spinReady[playerId] || 0;
+  const bonus = cards.bonusSpins[playerId] || 0;
+  const cooling = now < readyAt;
+  if (cooling && bonus <= 0) return { error: "還沒到可以轉的時間。" };
+  const table = drawTable();
+  if (!table.slices.length) return { error: "現在沒有可以抽的牌。" };
+  const total = table.slices.reduce((sum, slice) => sum + slice.weight, 0);
+  let roll = Math.random() * total;
+  let picked = table.slices[table.slices.length - 1];
+  for (const slice of table.slices) {
+    roll -= slice.weight;
+    if (roll < 0) {
+      picked = slice;
+      break;
+    }
+  }
+  if (cooling) cards.bonusSpins[playerId] = bonus - 1;
+  else cards.spinReady[playerId] = now + DRAW_SPIN_MS;
+  hand.push(picked.id);
+  if (picked.id === "respin") cards.bonusSpins[playerId] = (cards.bonusSpins[playerId] || 0) + 1;
+  cards.lastSpin[playerId] = { card: picked.id, at: now };
+  return { ok: true, card: picked.id };
+}
+
+function presentDraw(cards, viewerId) {
+  const table = drawTable();
+  const readyAt = cards?.spinReady?.[viewerId] || 0;
+  const last = cards?.lastSpin?.[viewerId];
+  return {
+    readyAt,
+    bonus: cards?.bonusSpins?.[viewerId] || 0,
+    lastId: last?.card || null,
+    lastAt: last?.at || 0,
+    slices: table.slices,
+    missing: table.missing,
+  };
+}
+
 export function initCards(now = Date.now()) {
   return {
     hands: {},
@@ -29,6 +112,9 @@ export function initCards(now = Date.now()) {
     pendingMode: null,
     pendingExtra: false,
     pendingNext: null,
+    spinReady: {},
+    bonusSpins: {},
+    lastSpin: {},
   };
 }
 
@@ -303,6 +389,9 @@ export function forgetPlayer(room, playerId) {
   if (cards.pendingNext === playerId) cards.pendingNext = null;
   if (room.game?.nextDjId === playerId) room.game.nextDjId = null;
   if (room.game?.doubles) delete room.game.doubles[playerId];
+  if (cards.spinReady) delete cards.spinReady[playerId];
+  if (cards.bonusSpins) delete cards.bonusSpins[playerId];
+  if (cards.lastSpin) delete cards.lastSpin[playerId];
 }
 
 export function presentCards(room, viewerId) {
@@ -324,6 +413,7 @@ export function presentCards(room, viewerId) {
       nextDjId: game?.nextDjId || cards?.pendingNext || null,
       extraSpins: game?.extraSpins || 0,
     },
+    draw: presentDraw(cards, viewerId),
   };
 }
 
