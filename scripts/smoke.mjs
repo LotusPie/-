@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { promptDeck, vibeDeck, scoreDeck } from "../server/decks.mjs";
+import { expireDj, parseYoutubeVideoId } from "../server/dj.mjs";
 import {
   applyAction,
   createPlayerRoom,
@@ -188,6 +189,15 @@ function testLogic() {
 }
 
 function testDj() {
+  const music = "https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=abc";
+  const watch = "https://www.youtube.com/watch?v=M7lc1UVf-VE&t=12";
+  assert.equal(parseYoutubeVideoId(music), "dQw4w9WgXcQ");
+  assert.equal(parseYoutubeVideoId(watch), "M7lc1UVf-VE");
+  assert.equal(parseYoutubeVideoId("https://youtu.be/M7lc1UVf-VE"), "M7lc1UVf-VE");
+  assert.equal(parseYoutubeVideoId("https://www.youtube.com/shorts/M7lc1UVf-VE"), "M7lc1UVf-VE");
+  assert.equal(parseYoutubeVideoId("https://open.spotify.com/track/abc"), null);
+  assert.equal(parseYoutubeVideoId("not a url"), null);
+
   const { room, ids } = freshRoom(["阿凱", "小魚", "阿德"]);
   const [a, b, c] = ids;
   assert.equal(applyAction(room, b, { name: "start", game: "dj" }).ok, true);
@@ -195,62 +205,85 @@ function testDj() {
   assert.equal(room.game.djId, a);
   assert.equal(room.game.step, "pick");
   assert.match(applyAction(room, b, { name: "djMode", mode: "own" }).error, /另一位迪爵/);
+  assert.match(applyAction(room, a, { name: "djSubmit", title: "七里香" }).error, /還沒有這個動作/);
 
   assert.equal(applyAction(room, c, { name: "djSkip" }).ok, true);
   assert.equal(room.game.djId, b);
   assert.ok(room.game.skipped.includes(a));
 
   assert.equal(applyAction(room, b, { name: "djMode", mode: "own" }).ok, true);
-  assert.match(applyAction(room, b, { name: "djCue", title: "  ", artist: "" }).error, /歌名/);
-  assert.equal(applyAction(room, b, { name: "djCue", title: "晴天", artist: "周杰倫" }).ok, true);
-  assert.equal(room.game.step, "rate");
+  assert.match(applyAction(room, b, { name: "djCue", url: "https://example.com/a" }).error, /連結/);
+  assert.equal(applyAction(room, b, { name: "djCue", url: watch }).ok, true);
+  assert.equal(room.game.step, "live");
+  assert.equal(room.game.videoId, "M7lc1UVf-VE");
+  assert.equal(room.game.endsAt, null);
+  assert.equal(
+    applyAction(room, b, { name: "djSync", videoId: "M7lc1UVf-VE", title: "晴天", artist: "周杰倫", playState: "playing" }).ok,
+    true,
+  );
   assert.equal(room.game.song.title, "晴天");
+  assert.match(applyAction(room, a, { name: "djSync", videoId: "M7lc1UVf-VE", title: "假的", playState: "playing" }).error, /只有本輪迪爵/);
   assert.match(applyAction(room, b, { name: "djRate", value: 2 }).error, /不評自己/);
   assert.equal(applyAction(room, a, { name: "djRate", value: 0 }).ok, true);
-  assert.equal(room.game.step, "rate");
-  assert.equal(applyAction(room, c, { name: "djRate", value: "none" }).ok, true);
+  assert.equal(scoreOf(room, a), 1);
   assert.equal(scoreOf(room, b), 0);
+  assert.equal(room.game.step, "live");
+  assert.match(applyAction(room, a, { name: "djRate", value: 2 }).error, /評過了/);
+  assert.equal(applyAction(room, c, { name: "djRate", value: "none" }).ok, true);
+  assert.equal(scoreOf(room, c), 0);
+  assert.equal(scoreOf(room, b), 0);
+  assert.equal(applyAction(room, b, { name: "djEnded" }).ok, true);
   assert.equal(room.game.step, "pick");
   assert.equal(room.game.djId, c);
 
   assert.equal(applyAction(room, c, { name: "djMode", mode: "playlist" }).ok, true);
-  assert.equal(applyAction(room, c, { name: "djCue", title: "夜曲", artist: "周杰倫" }).ok, true);
-  assert.equal(room.game.step, "collect");
-  assert.equal(applyAction(room, b, { name: "djPassSubmit" }).ok, true);
-  assert.equal(scoreOf(room, b), 0);
-  assert.equal(room.game.step, "collect");
-  assert.equal(applyAction(room, a, { name: "djSubmit", title: "七里香", artist: "周杰倫" }).ok, true);
-  assert.equal(room.game.step, "judge");
-  const liked = room.game.submissions[0].id;
-  assert.equal(applyAction(room, c, { name: "djJudge", submissionId: liked, verdict: "like" }).ok, true);
-  assert.equal(scoreOf(room, a), 2);
-  assert.equal(room.game.step, "rate");
+  const started = Date.now();
+  assert.equal(applyAction(room, c, { name: "djCue", url: music }).ok, true);
+  assert.equal(room.game.step, "live");
+  assert.equal(room.game.videoId, "dQw4w9WgXcQ");
+  assert.ok(room.game.endsAt >= started + 20 * 60 * 1000 - 2000);
   assert.equal(applyAction(room, b, { name: "djRate", value: -2 }).ok, true);
-  assert.equal(room.game.step, "rate");
-  assert.equal(applyAction(room, a, { name: "djFinish" }).ok, true);
+  assert.equal(scoreOf(room, b), 1);
   assert.equal(scoreOf(room, c), -2);
-
-  assert.equal(applyAction(room, room.game.djId, { name: "djMode", mode: "playlist" }).ok, true);
-  assert.equal(applyAction(room, room.game.djId, { name: "djCue", title: "稻香", artist: "" }).ok, true);
-  const djId = room.game.djId;
-  const guesser = [a, b, c].find((id) => id !== djId);
-  assert.equal(applyAction(room, guesser, { name: "djSubmit", title: "聽媽媽的話", artist: "" }).ok, true);
-  assert.equal(applyAction(room, djId, { name: "djClose" }).ok, true);
-  assert.equal(room.game.step, "judge");
-  const unlikeScore = scoreOf(room, guesser);
+  assert.equal(room.game.step, "live");
   assert.equal(
-    applyAction(room, djId, { name: "djJudge", submissionId: room.game.submissions[0].id, verdict: "unlike" }).ok,
+    applyAction(room, c, {
+      name: "djSync",
+      videoId: "jNQXAC9IVRw",
+      title: "下一首",
+      artist: "別人",
+      playState: "playing",
+    }).ok,
     true,
   );
-  assert.equal(scoreOf(room, guesser), unlikeScore);
-  assert.equal(room.game.step, "rate");
+  assert.equal(room.game.videoId, "jNQXAC9IVRw");
+  assert.equal(room.game.song.title, "下一首");
+  assert.equal(room.game.ratings[b], undefined);
+  assert.equal(applyAction(room, b, { name: "djRate", value: 1 }).ok, true);
+  assert.equal(scoreOf(room, b), 2);
+  assert.equal(scoreOf(room, c), -1);
+  assert.match(applyAction(room, a, { name: "djFinish" }).error, /迪爵結束/);
+  assert.equal(applyAction(room, c, { name: "djFinish" }).ok, true);
+  assert.equal(room.game.step, "pick");
+  assert.notEqual(room.game.djId, c);
+
+  const timed = freshRoom(["阿凱", "小魚"]);
+  applyAction(timed.room, timed.ids[0], { name: "start", game: "dj" });
+  applyAction(timed.room, timed.ids[0], { name: "djMode", mode: "playlist" });
+  applyAction(timed.room, timed.ids[0], { name: "djCue", url: watch });
+  assert.match(applyAction(timed.room, timed.ids[0], { name: "djTimeUp" }).error, /時間還沒到/);
+  timed.room.game.endsAt = Date.now() - 1000;
+  assert.equal(expireDj(timed.room), true);
+  assert.equal(timed.room.game.step, "pick");
+  assert.equal(timed.room.game.djId, timed.ids[1]);
 
   const low = freshRoom(["阿凱", "小魚"]);
   applyAction(low.room, low.ids[0], { name: "start", game: "dj" });
   applyAction(low.room, low.ids[0], { name: "djMode", mode: "own" });
-  applyAction(low.room, low.ids[0], { name: "djCue", title: "安靜", artist: "" });
+  applyAction(low.room, low.ids[0], { name: "djCue", url: watch });
   applyAction(low.room, low.ids[1], { name: "djRate", value: -2 });
   assert.equal(scoreOf(low.room, low.ids[0]), -2);
+  assert.equal(scoreOf(low.room, low.ids[1]), 1);
   applyAction(low.room, low.ids[0], { name: "lobby" });
   applyAction(low.room, low.ids[0], { name: "start", game: "prompt" });
   if (low.room.game.turnOrder[0] === low.ids[0]) {
@@ -393,44 +426,65 @@ async function testServer() {
     const firstDj = clientOf(djStart.room.game.djId);
     const firstListener = firstDj === host ? guest : host;
     const beforeOwn = djStart.room.players.find((player) => player.id === djStart.room.game.djId).score;
+    const listenerId = firstListener === host ? hostId : guestId;
+    const listenerBeforeOwn = djStart.room.players.find((player) => player.id === listenerId).score;
     firstDj.send({ type: "action", name: "djMode", mode: "own" });
     await waitUntil(firstDj.states, (msg) => msg.room?.game?.step === "enter");
-    firstDj.send({ type: "action", name: "djCue", title: "晴天", artist: "周杰倫" });
-    await waitUntil(firstListener.states, (msg) => msg.room?.game?.song?.title === "晴天" && msg.room.game.step === "rate");
-    firstListener.send({ type: "action", name: "djRate", value: -1 });
-    const afterOwn = await waitUntil(firstDj.states, (msg) => {
-      const player = msg.room?.players?.find((item) => item.id === djStart.room.game.djId);
-      return player && player.score === beforeOwn - 1 && msg.room.game.step === "pick";
+    firstDj.send({ type: "action", name: "djCue", url: "https://www.youtube.com/watch?v=M7lc1UVf-VE" });
+    await waitUntil(firstListener.states, (msg) => msg.room?.game?.videoId === "M7lc1UVf-VE" && msg.room.game.step === "live");
+    firstDj.send({
+      type: "action",
+      name: "djSync",
+      videoId: "M7lc1UVf-VE",
+      title: "晴天",
+      artist: "周杰倫",
+      playState: "playing",
     });
-    await waitUntil(
-      firstListener.states,
-      (msg) => msg.room?.players?.find((item) => item.id === djStart.room.game.djId)?.score === beforeOwn - 1,
-    );
+    await waitUntil(firstListener.states, (msg) => msg.room?.game?.song?.title === "晴天");
+    firstListener.send({ type: "action", name: "djRate", value: -1 });
+    await waitUntil(firstDj.states, (msg) => {
+      const dj = msg.room?.players?.find((item) => item.id === djStart.room.game.djId);
+      const rater = msg.room?.players?.find((item) => item.id === listenerId);
+      return dj && rater && dj.score === beforeOwn - 1 && rater.score === listenerBeforeOwn + 1 && msg.room.game.step === "live";
+    });
+    await waitUntil(firstListener.states, (msg) => {
+      const dj = msg.room?.players?.find((item) => item.id === djStart.room.game.djId);
+      return dj && dj.score === beforeOwn - 1;
+    });
+    firstDj.send({ type: "action", name: "djFinish" });
+    const picked = await waitUntil(firstListener.states, (msg) => msg.room?.game?.step === "pick");
 
-    const playlistDjId = afterOwn.room.game.djId;
+    const playlistDjId = picked.room.game.djId;
     const playlistDj = clientOf(playlistDjId);
     const playlistListener = playlistDj === host ? guest : host;
-    const listenerBefore = afterOwn.room.players.find((player) => player.id === (playlistDj === host ? guestId : hostId)).score;
+    const playlistListenerId = playlistListener === host ? hostId : guestId;
+    const listenerBefore = picked.room.players.find((player) => player.id === playlistListenerId).score;
+    const djBefore = picked.room.players.find((player) => player.id === playlistDjId).score;
     playlistDj.send({ type: "action", name: "djMode", mode: "playlist" });
     await waitUntil(playlistDj.states, (msg) => msg.room?.game?.step === "enter" && msg.room.game.djId === playlistDjId);
-    playlistDj.send({ type: "action", name: "djCue", title: "夜曲", artist: "周杰倫" });
-    await waitUntil(playlistListener.states, (msg) => msg.room?.game?.step === "collect" && msg.room.game.song?.title === "夜曲");
-    playlistListener.send({ type: "action", name: "djSubmit", title: "七里香", artist: "周杰倫" });
-    const judging = await waitUntil(playlistDj.states, (msg) => msg.room?.game?.step === "judge");
+    playlistDj.send({ type: "action", name: "djCue", url: "https://music.youtube.com/watch?v=dQw4w9WgXcQ" });
+    await waitUntil(
+      playlistListener.states,
+      (msg) => msg.room?.game?.step === "live" && msg.room.game.videoId === "dQw4w9WgXcQ" && msg.room.game.endsAt,
+    );
     playlistDj.send({
       type: "action",
-      name: "djJudge",
-      submissionId: judging.room.game.submissions[0].id,
-      verdict: "like",
+      name: "djSync",
+      videoId: "dQw4w9WgXcQ",
+      title: "夜曲",
+      artist: "周杰倫",
+      playState: "playing",
     });
-    await waitUntil(playlistListener.states, (msg) => {
-      const mine = msg.youId === hostId ? hostId : guestId;
-      return msg.room?.players?.find((item) => item.id === mine)?.score === listenerBefore + 2 && msg.room.game.step === "rate";
-    });
+    await waitUntil(playlistListener.states, (msg) => msg.room?.game?.song?.title === "夜曲");
     playlistListener.send({ type: "action", name: "djRate", value: 2 });
     await waitUntil(playlistDj.states, (msg) => {
-      const player = msg.room?.players?.find((item) => item.id === playlistDjId);
-      return player && player.score === (afterOwn.room.players.find((item) => item.id === playlistDjId).score + 2);
+      const dj = msg.room?.players?.find((item) => item.id === playlistDjId);
+      const rater = msg.room?.players?.find((item) => item.id === playlistListenerId);
+      return dj && rater && dj.score === djBefore + 2 && rater.score === listenerBefore + 1;
+    });
+    await waitUntil(playlistListener.states, (msg) => {
+      const rater = msg.room?.players?.find((item) => item.id === playlistListenerId);
+      return rater && rater.score === listenerBefore + 1;
     });
 
     const bad = await openClient(port);

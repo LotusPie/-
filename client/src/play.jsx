@@ -159,12 +159,12 @@ export function Lobby({ room, youId, onStart, onLeave }) {
     <div className="stack">
       <section className="panel">
         <h2>車上主遊戲</h2>
-        <p className="hint">音響自己播。這裡只排誰當迪爵、放大歌名、記分數。駕駛或睡著，誰都可以這輪跳過。</p>
+        <p className="hint">聲音只從本輪迪爵的手機出來。其他人看現在這首、評分。駕駛或睡著，誰都可以這輪跳過。</p>
       </section>
       <button className="game-choice dj" type="button" onClick={() => onStart("dj")}>
         <span className="kicker">乘客玩</span>
         <strong>如果我是迪爵</strong>
-        <span>輪到你就是本輪迪爵。自行選歌，或讓大家貼進你的歌單。</span>
+        <span>自行選歌播一首。貼歌單讓演算法接著播 20 分鐘。</span>
       </button>
       <h2 className="minor-title">也可以玩</h2>
       <button className="game-choice minor prompt" type="button" onClick={() => onStart("prompt")}>

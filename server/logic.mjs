@@ -608,8 +608,10 @@ export function serialize(room, viewerId) {
           mode: game.mode || null,
           djId: game.djId || null,
           song: game.song || null,
-          submissions: game.submissions || [],
-          passedSubmit: game.passedSubmit || [],
+          seedId: game.seedId || null,
+          videoId: game.videoId || null,
+          playState: game.playState || null,
+          endsAt: game.endsAt || null,
           ratings: game.ratings || {},
         }
       : null,

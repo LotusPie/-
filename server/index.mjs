@@ -12,6 +12,7 @@ import {
   removePlayer,
   normalizeCode,
 } from "./logic.mjs";
+import { expireDj } from "./dj.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "../client/dist");
@@ -264,6 +265,12 @@ setInterval(() => {
     }
   }
 }, 60 * 1000).unref();
+
+setInterval(() => {
+  for (const room of rooms.values()) {
+    if (expireDj(room)) broadcast(room);
+  }
+}, 1000).unref();
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`on the trip listening on http://0.0.0.0:${PORT}`);

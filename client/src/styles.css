@@ -461,9 +461,43 @@ button.skip-round {
 }
 
 .song-input {
-  font-size: 1.45rem;
+  font-size: 1.15rem;
   font-weight: 700;
   min-height: 72px;
+}
+
+.countdown {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(4.2rem, 22vw, 6.4rem);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-line {
+  margin: 0;
+  text-align: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.yt-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #211c18;
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.yt-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 
 .points.neg {

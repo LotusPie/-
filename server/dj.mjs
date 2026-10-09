@@ -1,5 +1,16 @@
-const SONG_MAX = 36;
-const ARTIST_MAX = 24;
+const SONG_MAX = 80;
+const ARTIST_MAX = 40;
+const ROUND_MS = 20 * 60 * 1000;
+
+const PLAY_STATES = new Set(["unstarted", "playing", "paused", "buffering", "ended", "cued", "error"]);
+
+const HOSTS = new Set([
+  "youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtu.be",
+  "youtube-nocookie.com",
+]);
 
 function clip(text, max) {
   return [...String(text ?? "").replace(/[\u0000-\u001f]/g, "").trim()].slice(0, max).join("");
@@ -19,8 +30,34 @@ function addExact(player, delta) {
   return delta;
 }
 
-function others(room) {
-  return active(room).filter((player) => player.id !== room.game.djId);
+function videoIdOk(id) {
+  return /^[A-Za-z0-9_-]{11}$/.test(id || "") ? id : null;
+}
+
+export function parseYoutubeVideoId(input) {
+  const text = String(input ?? "").trim();
+  if (!text || text.length > 500) return null;
+  const bare = videoIdOk(text);
+  if (bare) return bare;
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (!HOSTS.has(host)) return null;
+  if (host === "youtu.be") {
+    return videoIdOk(url.pathname.split("/").filter(Boolean)[0]);
+  }
+  const fromQuery = videoIdOk(url.searchParams.get("v"));
+  if (fromQuery) return fromQuery;
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (parts[0] === "embed" || parts[0] === "shorts" || parts[0] === "live" || parts[0] === "v") {
+    return videoIdOk(parts[1]);
+  }
+  return null;
 }
 
 function freshRound(game, djId, round) {
@@ -32,11 +69,12 @@ function freshRound(game, djId, round) {
     djId,
     skipped: game?.skipped || [],
     served: game?.served || [],
+    seedId: null,
+    videoId: null,
     song: null,
-    submissions: [],
-    passedSubmit: [],
+    playState: null,
     ratings: {},
-    ratingApplied: false,
+    endsAt: null,
   };
 }
 
@@ -77,48 +115,37 @@ function advanceDj(room, mark) {
   return { ok: true };
 }
 
-function openJudgeOrRate(room) {
-  const game = room.game;
-  const pending = game.submissions.some((item) => !item.verdict && findPlayer(room, item.playerId));
-  game.step = pending ? "judge" : "rate";
-}
-
-function maybeCloseCollect(room) {
-  const game = room.game;
-  if (game.step !== "collect") return;
-  const waiting = others(room).some(
-    (player) =>
-      !game.passedSubmit.includes(player.id) &&
-      !game.submissions.some((item) => item.playerId === player.id),
-  );
-  if (!waiting) openJudgeOrRate(room);
-}
-
-function currentSubmission(room) {
-  return room.game.submissions.find((item) => !item.verdict && findPlayer(room, item.playerId)) || null;
-}
-
-function finishRound(room) {
-  const game = room.game;
-  if (game.ratingApplied) return advanceDj(room, "served");
-  let sum = 0;
-  for (const value of Object.values(game.ratings)) {
-    if (typeof value === "number") sum += value;
-  }
-  addExact(findPlayer(room, game.djId), sum);
-  game.ratingApplied = true;
-  game.ratingSum = sum;
-  return advanceDj(room, "served");
-}
-
 function requireDj(room) {
   if (room.game?.kind !== "dj") return { error: "現在不是如果我是迪爵。" };
   return null;
 }
 
+export function expireDj(room, now = Date.now()) {
+  const game = room.game;
+  if (!game || game.kind !== "dj" || game.step !== "live" || game.mode !== "playlist") return false;
+  if (!game.endsAt || now < game.endsAt) return false;
+  advanceDj(room, "served");
+  return true;
+}
+
+function applyRating(room, playerId, value) {
+  const game = room.game;
+  if (playerId === game.djId) return { error: "迪爵這輪不評自己的歌。" };
+  const allowed = value === "none" || value === -2 || value === -1 || value === 0 || value === 1 || value === 2;
+  if (!allowed) return { error: "沒有這個分數。" };
+  if (game.ratings[playerId] != null) return { error: "這首你評過了。" };
+  game.ratings[playerId] = value;
+  if (typeof value === "number") {
+    addExact(findPlayer(room, playerId), 1);
+    addExact(findPlayer(room, game.djId), value);
+  }
+  return { ok: true };
+}
+
 export function handleDjAction(room, playerId, msg) {
   const blocked = requireDj(room);
   if (blocked) return blocked;
+  if (expireDj(room)) return { ok: true };
   const game = room.game;
   const name = msg.name;
 
@@ -146,83 +173,58 @@ export function handleDjAction(room, playerId, msg) {
   if (name === "djCue") {
     if (game.step !== "enter") return { error: "現在還不能播。" };
     if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
-    const title = clip(msg.title, SONG_MAX);
-    if (!title) return { error: "先寫歌名。" };
-    game.song = { title, artist: clip(msg.artist, ARTIST_MAX) };
-    game.step = game.mode === "playlist" && others(room).length ? "collect" : "rate";
+    const videoId = parseYoutubeVideoId(msg.url);
+    if (!videoId) return { error: "貼一個 YouTube 或 YouTube Music 的歌曲連結。" };
+    game.seedId = videoId;
+    game.videoId = videoId;
+    game.song = { title: "", artist: "" };
+    game.playState = "unstarted";
+    game.ratings = {};
+    game.step = "live";
+    game.endsAt = game.mode === "playlist" ? Date.now() + ROUND_MS : null;
     return { ok: true };
   }
 
-  if (name === "djSubmit") {
-    if (game.step !== "collect") return { error: "現在還不能交歌。" };
-    if (playerId === game.djId) return { error: "迪爵這輪不用交歌。" };
-    if (
-      game.passedSubmit.includes(playerId) ||
-      game.submissions.some((item) => item.playerId === playerId)
-    ) {
-      return { error: "你已經交過了。" };
+  if (name === "djSync") {
+    if (game.step !== "live") return { ok: true };
+    if (playerId !== game.djId) return { error: "只有本輪迪爵的裝置會播放。" };
+    const reported = videoIdOk(msg.videoId) || game.videoId;
+    const nextId = game.mode === "playlist" ? reported : game.seedId;
+    if (nextId && nextId !== game.videoId) {
+      game.videoId = nextId;
+      game.ratings = {};
+      game.song = { title: "", artist: "" };
     }
     const title = clip(msg.title, SONG_MAX);
-    if (!title) return { error: "先寫歌名。" };
-    game.submissions.push({
-      id: crypto.randomUUID(),
-      playerId,
-      title,
-      artist: clip(msg.artist, ARTIST_MAX),
-      verdict: null,
-    });
-    maybeCloseCollect(room);
-    return { ok: true };
-  }
-
-  if (name === "djPassSubmit") {
-    if (game.step !== "collect") return { error: "現在還不能跳過。" };
-    if (playerId === game.djId) return { error: "迪爵這輪不用交歌。" };
-    if (
-      game.passedSubmit.includes(playerId) ||
-      game.submissions.some((item) => item.playerId === playerId)
-    ) {
-      return { error: "你已經交過了。" };
-    }
-    game.passedSubmit.push(playerId);
-    maybeCloseCollect(room);
-    return { ok: true };
-  }
-
-  if (name === "djClose") {
-    if (game.step !== "collect") return { error: "現在還不能收歌單。" };
-    openJudgeOrRate(room);
-    return { ok: true };
-  }
-
-  if (name === "djJudge") {
-    if (game.step !== "judge") return { error: "現在還不能判斷。" };
-    if (playerId !== game.djId) return { error: "這輪由迪爵判斷。" };
-    const submission = currentSubmission(room);
-    if (!submission || submission.id !== msg.submissionId) return { error: "這首已經看過了。" };
-    if (msg.verdict !== "like" && msg.verdict !== "unlike") return { error: "請選像我或不像。" };
-    submission.verdict = msg.verdict;
-    if (msg.verdict === "like") addExact(findPlayer(room, submission.playerId), 2);
-    if (currentSubmission(room)) return { ok: true };
-    game.step = "rate";
+    const artist = clip(msg.artist, ARTIST_MAX);
+    if (!game.song) game.song = { title: "", artist: "" };
+    if (title) game.song.title = title;
+    if (artist) game.song.artist = artist;
+    if (PLAY_STATES.has(msg.playState)) game.playState = msg.playState;
     return { ok: true };
   }
 
   if (name === "djRate") {
-    if (game.step !== "rate") return { error: "現在還不能評。" };
-    if (playerId === game.djId) return { error: "迪爵這輪不評自己的歌。" };
-    const value = msg.value;
-    const allowed = value === "none" || value === -2 || value === -1 || value === 0 || value === 1 || value === 2;
-    if (!allowed) return { error: "沒有這個分數。" };
-    game.ratings[playerId] = value;
-    const allIn = others(room).every((player) => game.ratings[player.id] != null);
-    if (allIn) return finishRound(room);
-    return { ok: true };
+    if (game.step !== "live") return { error: "現在還不能評。" };
+    return applyRating(room, playerId, msg.value);
+  }
+
+  if (name === "djEnded") {
+    if (game.step !== "live" || game.mode !== "own") return { ok: true };
+    if (playerId !== game.djId) return { error: "這輪由迪爵結束。" };
+    return advanceDj(room, "served");
   }
 
   if (name === "djFinish") {
-    if (game.step !== "rate") return { error: "這輪還沒到結束。" };
-    return finishRound(room);
+    if (game.step !== "live") return { error: "這輪還沒到結束。" };
+    if (playerId !== game.djId) return { error: "這輪由迪爵結束。" };
+    return advanceDj(room, "served");
+  }
+
+  if (name === "djTimeUp") {
+    if (game.step !== "live" || game.mode !== "playlist") return { ok: true };
+    if (Date.now() + 2000 < game.endsAt) return { error: "時間還沒到。" };
+    return advanceDj(room, "served");
   }
 
   return { error: "還沒有這個動作。" };
@@ -233,9 +235,5 @@ export function advanceDisconnectedDj(room) {
   if (!game || game.kind !== "dj" || !game.djId) return;
   if (findPlayer(room, game.djId)?.connected) return;
   if (!active(room).length) return;
-  if (game.step === "rate" && !game.ratingApplied) {
-    finishRound(room);
-    return;
-  }
   advanceDj(room, "skip");
 }
