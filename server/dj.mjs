@@ -1,4 +1,20 @@
-import { clearRoundCards, clearSongCards, skipPassed, songLimit, takeForcedMode, takeLobbyQueue } from "./cards.mjs";
+import {
+  clearRoundCards,
+  clearSongCards,
+  enqueueOffer,
+  offerDouble,
+  offerExtra,
+  offerHide,
+  offerPass,
+  offerPeek,
+  offerRespin,
+  pruneOffers,
+  ratingGates,
+  skipPassed,
+  songLimit,
+  takeForcedMode,
+  takeLobbyQueue,
+} from "./cards.mjs";
 
 const SONG_MAX = 80;
 const ARTIST_MAX = 40;
@@ -122,6 +138,7 @@ export function beginDj(room) {
   if (!first) return { error: "現在沒有人在線上。" };
   room.phase = "playing";
   room.game = freshRound(room, null, first.id, 1);
+  offerPass(room);
   return { ok: true };
 }
 
@@ -154,6 +171,7 @@ export function advanceDj(room, mark) {
   next = named || skipPassed(room, next, online, pool);
   clearRoundCards(room);
   room.game = freshRound(room, game, next, game.round + 1);
+  offerPass(room);
   return { ok: true };
 }
 
@@ -168,6 +186,80 @@ export function expireDj(room, now = Date.now()) {
   if (!game.endsAt || now < game.endsAt) return false;
   advanceDj(room, "served");
   return true;
+}
+
+function ratingError(room, playerId, value) {
+  const game = room.game;
+  if (playerId === game.djId) return { error: "迪爵這輪不評自己的歌。" };
+  const allowed = value === -2 || value === -1 || value === 1 || value === 2;
+  if (!allowed) return { error: "沒有這個分數。" };
+  if (game.ratings[playerId] != null) return { error: "這首你評過了。" };
+  if ((value === -1 || value === -2) && game.blockVideoId && game.blockVideoId === game.videoId) {
+    return { error: "這一首不能打負分。" };
+  }
+  return null;
+}
+
+function finishRating(room, playerId, value) {
+  const game = room.game;
+  const djId = game.djId;
+  const beforeRater = findPlayer(room, playerId)?.score;
+  const beforeDj = findPlayer(room, djId)?.score;
+  const result = applyRating(room, playerId, value);
+  if (result?.error) return result;
+  if (findPlayer(room, playerId)?.score !== beforeRater) offerHide(room, playerId);
+  if (findPlayer(room, djId)?.score !== beforeDj) offerHide(room, djId);
+  offerPeek(room, playerId);
+  return result;
+}
+
+export function releaseRating(room, offer) {
+  if (!offer?.gateId) return;
+  const game = room.game;
+  if (!game || game.kind !== "dj") return;
+  if ((room.cards?.offers || []).some((item) => item.gateId === offer.gateId)) return;
+  const raterId = offer.raterId;
+  if (game.blockVideoId && game.blockVideoId === game.videoId) {
+    if (game.pendingRatings) delete game.pendingRatings[raterId];
+    if (game.ratingQueue) delete game.ratingQueue[raterId];
+    return;
+  }
+  const queued = game.ratingQueue?.[raterId] || [];
+  while (queued.length) {
+    const next = queued.shift();
+    if (enqueueOffer(room, next)) {
+      game.ratingQueue[raterId] = queued;
+      return;
+    }
+  }
+  const value = game.pendingRatings?.[raterId];
+  if (game.pendingRatings) delete game.pendingRatings[raterId];
+  if (game.ratingQueue) delete game.ratingQueue[raterId];
+  if (value == null) return;
+  finishRating(room, raterId, value);
+}
+
+function clearPendingRatings(game) {
+  if (!game) return;
+  game.pendingRatings = {};
+  game.ratingQueue = {};
+}
+
+export function syncPrompts(room) {
+  let guard = 0;
+  while (guard < 8) {
+    const removed = pruneOffers(room);
+    if (!removed.length) break;
+    for (const offer of removed) releaseRating(room, offer);
+    guard += 1;
+  }
+  const game = room.game;
+  if (!game || game.kind !== "dj" || !game.pendingRatings) return;
+  for (const raterId of Object.keys(game.pendingRatings)) {
+    const gateId = `rate:${raterId}`;
+    if ((room.cards?.offers || []).some((item) => item.gateId === gateId)) continue;
+    releaseRating(room, { gateId, raterId });
+  }
 }
 
 function applyRating(room, playerId, value) {
@@ -216,6 +308,7 @@ export function handleDjAction(room, playerId, msg) {
     else if (msg.songs === 0) game.wheelSongs = 0;
     else return { error: "沒有這個首數。" };
     game.wheelSpin = (game.wheelSpin || 0) + 1;
+    offerRespin(room);
     return { ok: true };
   }
 
@@ -230,6 +323,7 @@ export function handleDjAction(room, playerId, msg) {
       game.step = "reel";
       game.reel = null;
       game.reelSpin = 0;
+      offerExtra(room);
       return { ok: true };
     }
     if (msg.songs === 0) return advanceDj(room, "served");
@@ -264,6 +358,7 @@ export function handleDjAction(room, playerId, msg) {
     const videoId = parseYoutubeVideoId(msg.url);
     if (!videoId) return { error: "貼一個 YouTube 或 YouTube Music 的歌曲連結。" };
     clearSongCards(room, game);
+    clearPendingRatings(game);
     game.seedId = videoId;
     game.videoId = videoId;
     game.currentTime = 0;
@@ -273,6 +368,7 @@ export function handleDjAction(room, playerId, msg) {
     game.step = "live";
     game.endsAt = null;
     game.songCount = game.songCount > 0 ? game.songCount + 1 : 1;
+    offerDouble(room);
     return { ok: true };
   }
 
@@ -287,6 +383,7 @@ export function handleDjAction(room, playerId, msg) {
         return advanceDj(room, "served");
       }
       clearSongCards(room, game);
+      clearPendingRatings(game);
       game.videoId = nextId;
       game.ratings = {};
       game.song = { title: "", artist: "" };
@@ -306,7 +403,19 @@ export function handleDjAction(room, playerId, msg) {
 
   if (name === "djRate") {
     if (game.step !== "live") return { error: "現在還不能評。" };
-    return applyRating(room, playerId, msg.value);
+    if (game.pendingRatings?.[playerId] != null) return { error: "這首你評過了。" };
+    const problem = ratingError(room, playerId, msg.value);
+    if (problem) return problem;
+    const gates = ratingGates(room, playerId, msg.value);
+    if (gates.length) {
+      if (!game.pendingRatings) game.pendingRatings = {};
+      if (!game.ratingQueue) game.ratingQueue = {};
+      game.pendingRatings[playerId] = msg.value;
+      game.ratingQueue[playerId] = gates.slice(1);
+      if (!enqueueOffer(room, gates[0])) releaseRating(room, gates[0]);
+      return { ok: true };
+    }
+    return finishRating(room, playerId, msg.value);
   }
 
   if (name === "djEnded") {
@@ -342,6 +451,7 @@ export function forceWheelStop(room, songs) {
   if (room.cards) room.cards.pendingMode = null;
   game.wheelSongs = songs;
   game.wheelSpin = (game.wheelSpin || 0) + 1;
+  offerRespin(room);
   return { ok: true };
 }
 

@@ -820,19 +820,25 @@ function ExtraCue({ act }) {
   );
 }
 
+function ratingMark(value) {
+  if (typeof value === "number") return value > 0 ? `+${value}` : String(value);
+  if (value) return "評過了";
+  return "還沒評";
+}
+
 function RatingRows({ room, game }) {
   const people = room.players.filter((player) => player.id !== game.djId);
   if (!people.length) return null;
   return (
-    <ul className="person-rows" aria-label="評分的人">
+    <ul className="person-rows" aria-label="評分的人" aria-live="polite">
       {people.map((player) => {
-        const rated = game.ratings?.[player.id] != null;
+        const value = game.ratings?.[player.id];
         return (
           <li key={player.id}>
             <PersonFace nickname={player.nickname} profile={player.profile} />
             <span className="who-name">
               {player.nickname}
-              {rated ? " · 評過了" : " · 還沒評"}
+              {` · ${ratingMark(value)}`}
             </span>
           </li>
         );

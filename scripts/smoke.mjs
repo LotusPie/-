@@ -1048,10 +1048,205 @@ function testProfile() {
   assert.equal(server.includes("buf.length > 8000"), true);
 }
 
+function cueLive(room, djId, songs = 1) {
+  const watch = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+  assert.equal(applyAction(room, djId, { name: "djMode", songs }).ok, true);
+  lockReel(room, djId);
+  assert.equal(applyAction(room, djId, { name: "djCue", url: watch }).ok, true);
+}
+
+function testPrompts() {
+  const watch = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+  const shield = freshRoom(["阿凱", "小魚", "阿德"]);
+  applyAction(shield.room, shield.ids[0], { name: "start", game: "dj" });
+  shield.room.cards.hands[shield.ids[0]] = ["shield", "swap", "steal", "mode", "next"];
+  cueLive(shield.room, shield.ids[0]);
+  assert.equal(applyAction(shield.room, shield.ids[1], { name: "djRate", value: -2 }).ok, true);
+  assert.equal(scoreOf(shield.room, shield.ids[0]), 0);
+  assert.equal(scoreOf(shield.room, shield.ids[1]), 0);
+  assert.equal(shield.room.game.ratings[shield.ids[1]], undefined);
+  assert.equal(shield.room.game.step, "live");
+  const asked = serialize(shield.room, shield.ids[0]);
+  assert.equal(asked.prompt.text, "小魚給了 -2，要使用護身嗎？");
+  assert.equal(asked.prompt.card, "shield");
+  assert.equal(asked.game.ratings[shield.ids[1]], -2);
+  assert.equal(serialize(shield.room, shield.ids[1]).prompt, null);
+  assert.equal(serialize(shield.room, shield.ids[2]).game.ratings[shield.ids[1]], undefined);
+  assert.equal(serialize(shield.room, shield.ids[1]).game.ratings[shield.ids[1]], -2);
+  assert.equal(applyAction(shield.room, shield.ids[0], { name: "cardDecline" }).ok, true);
+  assert.deepEqual(shield.room.cards.hands[shield.ids[0]], ["shield", "swap", "steal", "mode", "next"]);
+  assert.equal(scoreOf(shield.room, shield.ids[0]), -2);
+  assert.equal(scoreOf(shield.room, shield.ids[1]), 1);
+  assert.equal(shield.room.game.ratings[shield.ids[1]], -2);
+  assert.equal(serialize(shield.room, shield.ids[0]).prompt, null);
+
+  const used = freshRoom(["阿凱", "小魚"]);
+  applyAction(used.room, used.ids[0], { name: "start", game: "dj" });
+  used.room.cards.hands[used.ids[0]] = ["shield"];
+  cueLive(used.room, used.ids[0]);
+  applyAction(used.room, used.ids[1], { name: "djRate", value: -2 });
+  assert.equal(applyAction(used.room, used.ids[0], { name: "cardPlay", card: "shield" }).ok, true);
+  assert.deepEqual(used.room.cards.hands[used.ids[0]], []);
+  assert.equal(scoreOf(used.room, used.ids[0]), 0);
+  assert.equal(scoreOf(used.room, used.ids[1]), 1);
+  assert.equal(used.room.game.ratings[used.ids[1]], -2);
+  assert.equal(used.room.game.shield, true);
+
+  const sunny = freshRoom(["阿凱", "小魚"]);
+  applyAction(sunny.room, sunny.ids[0], { name: "start", game: "dj" });
+  sunny.room.cards.hands[sunny.ids[0]] = ["shield"];
+  cueLive(sunny.room, sunny.ids[0]);
+  assert.equal(applyAction(sunny.room, sunny.ids[1], { name: "djRate", value: 1 }).ok, true);
+  assert.equal(scoreOf(sunny.room, sunny.ids[0]), 1);
+  assert.equal(serialize(sunny.room, sunny.ids[0]).prompt, null);
+  assert.equal(sunny.room.game.pendingRatings?.[sunny.ids[1]], undefined);
+
+  const gated = freshRoom(["阿凱", "小魚", "阿德"]);
+  applyAction(gated.room, gated.ids[0], { name: "start", game: "dj" });
+  gated.room.cards.hands[gated.ids[0]] = ["shield"];
+  gated.room.cards.hands[gated.ids[2]] = ["block"];
+  cueLive(gated.room, gated.ids[0]);
+  applyAction(gated.room, gated.ids[1], { name: "djRate", value: -1 });
+  assert.equal(serialize(gated.room, gated.ids[2]).prompt.card, "block");
+  assert.equal(serialize(gated.room, gated.ids[2]).prompt.text, "小魚給了 -1，要使用擋負分嗎？");
+  assert.equal(serialize(gated.room, gated.ids[0]).prompt, null);
+  assert.equal(applyAction(gated.room, gated.ids[2], { name: "cardDecline" }).ok, true);
+  assert.deepEqual(gated.room.cards.hands[gated.ids[2]], ["block"]);
+  assert.equal(serialize(gated.room, gated.ids[0]).prompt.card, "shield");
+  assert.equal(applyAction(gated.room, gated.ids[0], { name: "cardDecline" }).ok, true);
+  assert.equal(scoreOf(gated.room, gated.ids[0]), -1);
+  assert.equal(gated.room.game.ratings[gated.ids[1]], -1);
+
+  const blocked = freshRoom(["阿凱", "小魚", "阿德"]);
+  applyAction(blocked.room, blocked.ids[0], { name: "start", game: "dj" });
+  blocked.room.cards.hands[blocked.ids[0]] = ["shield"];
+  blocked.room.cards.hands[blocked.ids[2]] = ["block"];
+  cueLive(blocked.room, blocked.ids[0]);
+  applyAction(blocked.room, blocked.ids[1], { name: "djRate", value: -2 });
+  assert.equal(applyAction(blocked.room, blocked.ids[2], { name: "cardPlay", card: "block" }).ok, true);
+  assert.deepEqual(blocked.room.cards.hands[blocked.ids[2]], []);
+  assert.equal(serialize(blocked.room, blocked.ids[0]).prompt, null);
+  assert.equal(scoreOf(blocked.room, blocked.ids[0]), 0);
+  assert.equal(scoreOf(blocked.room, blocked.ids[1]), 0);
+  assert.equal(blocked.room.game.ratings[blocked.ids[1]], undefined);
+  assert.equal(applyAction(blocked.room, blocked.ids[1], { name: "djRate", value: 2 }).ok, true);
+  assert.equal(scoreOf(blocked.room, blocked.ids[0]), 2);
+
+  const hide = freshRoom(["阿凱", "小魚"]);
+  applyAction(hide.room, hide.ids[0], { name: "start", game: "dj" });
+  hide.room.cards.hands[hide.ids[1]] = ["hide"];
+  cueLive(hide.room, hide.ids[0]);
+  applyAction(hide.room, hide.ids[1], { name: "djRate", value: 2 });
+  const hideAsk = serialize(hide.room, hide.ids[1]);
+  assert.equal(hideAsk.prompt.card, "hide");
+  assert.equal(hideAsk.prompt.text, "你的分數變成了 1，要使用隱藏兩小時嗎？");
+  assert.equal(hideAsk.ranking.some((row) => row.id === hide.ids[1]), true);
+  assert.equal(applyAction(hide.room, hide.ids[1], { name: "cardDecline" }).ok, true);
+  assert.deepEqual(hide.room.cards.hands[hide.ids[1]], ["hide"]);
+  assert.equal(serialize(hide.room, hide.ids[0]).ranking.some((row) => row.id === hide.ids[1]), true);
+
+  const hideUse = freshRoom(["阿凱", "小魚"]);
+  applyAction(hideUse.room, hideUse.ids[0], { name: "start", game: "dj" });
+  hideUse.room.cards.hands[hideUse.ids[1]] = ["hide"];
+  cueLive(hideUse.room, hideUse.ids[0]);
+  applyAction(hideUse.room, hideUse.ids[1], { name: "djRate", value: 1 });
+  assert.equal(applyAction(hideUse.room, hideUse.ids[1], { name: "cardPlay", card: "hide" }).ok, true);
+  assert.deepEqual(hideUse.room.cards.hands[hideUse.ids[1]], []);
+  assert.equal(serialize(hideUse.room, hideUse.ids[1]).ranking.some((row) => row.id === hideUse.ids[1]), false);
+
+  const hidden = freshRoom(["阿凱", "小魚"]);
+  applyAction(hidden.room, hidden.ids[0], { name: "start", game: "dj" });
+  hidden.room.cards.hands[hidden.ids[1]] = ["hide"];
+  hidden.room.cards.hideUntil[hidden.ids[1]] = Date.now() + 60_000;
+  cueLive(hidden.room, hidden.ids[0]);
+  applyAction(hidden.room, hidden.ids[1], { name: "djRate", value: 1 });
+  assert.equal(serialize(hidden.room, hidden.ids[1]).prompt, null);
+
+  const queued = freshRoom(["阿凱", "小魚"]);
+  applyAction(queued.room, queued.ids[0], { name: "start", game: "dj" });
+  queued.room.cards.hands[queued.ids[0]] = ["hide", "peek"];
+  cueLive(queued.room, queued.ids[0]);
+  applyAction(queued.room, queued.ids[1], { name: "djRate", value: 2 });
+  assert.equal(serialize(queued.room, queued.ids[0]).prompt.card, "hide");
+  assert.equal(applyAction(queued.room, queued.ids[0], { name: "cardDecline" }).ok, true);
+  const peek = serialize(queued.room, queued.ids[0]).prompt;
+  assert.equal(peek.card, "peek");
+  assert.equal(peek.targetId, queued.ids[1]);
+  assert.match(peek.text, /小魚/);
+  assert.equal(applyAction(queued.room, queued.ids[0], { name: "cardPlay", card: "peek", targetId: peek.targetId }).ok, true);
+  assert.equal(serialize(queued.room, queued.ids[0]).cards.peek.value, 2);
+  assert.deepEqual(queued.room.cards.hands[queued.ids[0]], ["hide"]);
+
+  const passed = freshRoom(["阿凱", "小魚"]);
+  passed.room.cards.hands[passed.ids[0]] = ["pass"];
+  applyAction(passed.room, passed.ids[0], { name: "start", game: "dj" });
+  assert.equal(serialize(passed.room, passed.ids[0]).prompt.text, "輪到你了，要使用這輪不當嗎？");
+  assert.equal(serialize(passed.room, passed.ids[1]).prompt, null);
+  assert.equal(applyAction(passed.room, passed.ids[0], { name: "cardDecline" }).ok, true);
+  assert.deepEqual(passed.room.cards.hands[passed.ids[0]], ["pass"]);
+  assert.equal(passed.room.game.djId, passed.ids[0]);
+
+  const passUse = freshRoom(["阿凱", "小魚"]);
+  passUse.room.cards.hands[passUse.ids[0]] = ["pass"];
+  applyAction(passUse.room, passUse.ids[0], { name: "start", game: "dj" });
+  assert.equal(applyAction(passUse.room, passUse.ids[0], { name: "cardPlay", card: "pass" }).ok, true);
+  assert.equal(passUse.room.game.djId, passUse.ids[1]);
+  assert.deepEqual(passUse.room.cards.hands[passUse.ids[0]], []);
+
+  const spin = freshRoom(["阿凱", "小魚"]);
+  applyAction(spin.room, spin.ids[0], { name: "start", game: "dj" });
+  spin.room.cards.hands[spin.ids[0]] = ["respin"];
+  assert.equal(serialize(spin.room, spin.ids[0]).prompt, null);
+  assert.equal(applyAction(spin.room, spin.ids[0], { name: "djSpin", songs: 1 }).ok, true);
+  assert.equal(serialize(spin.room, spin.ids[0]).prompt.text, "轉到了一首歌，要再轉一次嗎？");
+  assert.equal(serialize(spin.room, spin.ids[1]).prompt, null);
+  assert.equal(applyAction(spin.room, spin.ids[0], { name: "cardPlay", card: "respin" }).ok, true);
+  assert.equal(spin.room.game.extraSpins, 1);
+  assert.equal(spin.room.game.step, "pick");
+
+  const more = freshRoom(["阿凱", "小魚"]);
+  applyAction(more.room, more.ids[0], { name: "start", game: "dj" });
+  more.room.cards.hands[more.ids[1]] = ["extra"];
+  assert.equal(applyAction(more.room, more.ids[0], { name: "djMode", songs: 2 }).ok, true);
+  assert.equal(serialize(more.room, more.ids[1]).prompt.text, "這一輪是二首歌，要多播一首嗎？");
+  assert.equal(serialize(more.room, more.ids[0]).prompt, null);
+  assert.equal(applyAction(more.room, more.ids[1], { name: "cardDecline" }).ok, true);
+  assert.deepEqual(more.room.cards.hands[more.ids[1]], ["extra"]);
+  lockReel(more.room, more.ids[0]);
+  applyAction(more.room, more.ids[0], { name: "djCue", url: watch });
+  assert.equal(serialize(more.room, more.ids[1]).prompt, null);
+  applyAction(more.room, more.ids[0], { name: "djFinish" });
+  more.room.cards.hands[more.ids[1]] = [];
+  more.room.cards.hands[more.ids[0]] = ["double"];
+  applyAction(more.room, more.ids[1], { name: "djMode", songs: 1 });
+  lockReel(more.room, more.ids[1]);
+  applyAction(more.room, more.ids[1], { name: "djCue", url: watch });
+  assert.equal(serialize(more.room, more.ids[0]).prompt.text, "這一首要使用加倍嗎？");
+  assert.equal(serialize(more.room, more.ids[1]).prompt, null);
+  assert.equal(applyAction(more.room, more.ids[0], { name: "cardPlay", card: "double" }).ok, true);
+  applyAction(more.room, more.ids[0], { name: "djRate", value: 1 });
+  assert.equal(scoreOf(more.room, more.ids[1]), 2);
+  assert.equal(scoreOf(more.room, more.ids[0]), 1);
+
+  const play = fs.readFileSync(path.join(root, "client/src/play.jsx"), "utf8");
+  const app = fs.readFileSync(path.join(root, "client/src/App.jsx"), "utf8");
+  const djUi = fs.readFileSync(path.join(root, "client/src/dj.jsx"), "utf8");
+  const cardsUi = fs.readFileSync(path.join(root, "client/src/cards.jsx"), "utf8");
+  assert.equal(play.includes("這次不用"), true);
+  assert.equal(play.includes('name: "cardDecline"'), true);
+  assert.equal(play.includes('name: "cardPlay"'), true);
+  assert.equal(app.includes("<CardPrompt"), true);
+  assert.equal(djUi.includes("評分的人"), true);
+  assert.equal(djUi.includes("`+${value}`"), true);
+  assert.equal(cardsUi.includes("使用"), true);
+}
+
 try {
   testDecksAndCopy();
   testWatchSync();
   testLogic();
+  testPrompts();
   await testServer();
   console.log("smoke ok");
 } catch (error) {

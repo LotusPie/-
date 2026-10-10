@@ -149,6 +149,9 @@ export function initCards(now = Date.now()) {
     pendingDraw: {},
     wheelSpin: {},
     lastSpin: {},
+    offers: [],
+    declined: {},
+    offerSeq: 0,
   };
 }
 
@@ -197,8 +200,10 @@ export function buyCard(room, playerId, cardId) {
   if (player.score < spec.cost) return { error: "分數不夠，不能買。" };
   const hand = handOf(room, playerId);
   if (hand.length >= HAND_MAX) return { error: "手上已經有五張牌。" };
+  const before = player.score;
   player.score -= spec.cost;
   hand.push(spec.id);
+  if (player.score !== before) offerHide(room, playerId);
   return { ok: true };
 }
 
@@ -224,9 +229,12 @@ function applyCard(room, playerId, cardId, msg) {
   if (cardId === "swap") {
     const picked = otherOnline(room, playerId, msg?.targetId);
     if (picked.error) return picked;
-    const next = self.score;
-    self.score = picked.player.score;
-    picked.player.score = next;
+    const beforeSelf = self.score;
+    const beforeOther = picked.player.score;
+    self.score = beforeOther;
+    picked.player.score = beforeSelf;
+    if (self.score !== beforeSelf) offerHide(room, playerId);
+    if (picked.player.score !== beforeOther) offerHide(room, picked.player.id);
     return { ok: true };
   }
 
@@ -269,8 +277,12 @@ function applyCard(room, playerId, cardId, msg) {
     const picked = otherOnline(room, playerId, msg?.targetId);
     if (picked.error) return picked;
     if (picked.player.score <= 0) return { error: "沒有分可以拿。" };
+    const beforeSelf = self.score;
+    const beforeOther = picked.player.score;
     picked.player.score -= 1;
     self.score += 1;
+    if (self.score !== beforeSelf) offerHide(room, playerId);
+    if (picked.player.score !== beforeOther) offerHide(room, picked.player.id);
     return { ok: true };
   }
 
@@ -412,6 +424,8 @@ export function forgetPlayer(room, playerId) {
   if (cards.spinsLeft) delete cards.spinsLeft[playerId];
   if (cards.pendingDraw) delete cards.pendingDraw[playerId];
   if (cards.wheelSpin) delete cards.wheelSpin[playerId];
+  if (cards.offers) cards.offers = cards.offers.filter((offer) => offer.playerId !== playerId);
+  if (cards.declined) delete cards.declined[playerId];
 }
 
 export function presentCards(room, viewerId) {
@@ -527,4 +541,252 @@ export function tickScoreHides(room, now = Date.now()) {
     }
   }
   return changed;
+}
+
+function ensureOffers(room) {
+  if (!room.cards.offers) room.cards.offers = [];
+  if (!room.cards.declined) room.cards.declined = {};
+}
+
+function holds(room, playerId, cardId) {
+  return (room.cards?.hands?.[playerId] || []).includes(cardId);
+}
+
+function songStopLabel(songs) {
+  if (songs === 1) return "一首歌";
+  if (songs === 2) return "二首歌";
+  if (songs === 3) return "三首歌";
+  if (songs === 0) return "此輪跳過";
+  return "";
+}
+
+function stillUseful(room, offer) {
+  if (!holds(room, offer.playerId, offer.card)) return false;
+  const game = room.game?.kind === "dj" ? room.game : null;
+  if (offer.card === "shield") {
+    return Boolean(game && game.djId === offer.playerId && !game.shield && game.pendingRatings?.[offer.raterId] != null);
+  }
+  if (offer.card === "block") {
+    return Boolean(
+      game &&
+        game.pendingRatings?.[offer.raterId] != null &&
+        !(game.blockVideoId && game.blockVideoId === game.videoId),
+    );
+  }
+  if (offer.card === "hide") return !scoreHideUntil(room, offer.playerId);
+  if (offer.card === "peek") {
+    return Boolean(
+      game &&
+        game.step === "live" &&
+        offer.key === `peek:${game.videoId}:${offer.play?.targetId}` &&
+        typeof game.ratings?.[offer.play?.targetId] === "number",
+    );
+  }
+  if (offer.card === "respin") {
+    return Boolean(
+      game &&
+        game.step === "pick" &&
+        game.djId === offer.playerId &&
+        !(game.extraSpins > 0) &&
+        offer.key === `respin:${game.round}:${game.wheelSpin}`,
+    );
+  }
+  if (offer.card === "pass") {
+    return Boolean(
+      game &&
+        game.djId === offer.playerId &&
+        game.step !== "live" &&
+        offer.key === `pass:${game.round}:${game.djId}`,
+    );
+  }
+  if (offer.card === "extra") return Boolean(game && !game.extra && offer.key === `extra:${game.round}`);
+  if (offer.card === "double") {
+    return Boolean(
+      game &&
+        game.step === "live" &&
+        offer.key === `double:${game.videoId}` &&
+        game.djId !== offer.playerId &&
+        game.ratings?.[offer.playerId] == null &&
+        game.pendingRatings?.[offer.playerId] == null &&
+        game.doubles?.[offer.playerId] !== game.videoId,
+    );
+  }
+  return false;
+}
+
+export function pruneOffers(room) {
+  if (!room.cards?.offers?.length) return [];
+  const removed = [];
+  room.cards.offers = room.cards.offers.filter((offer) => {
+    if (stillUseful(room, offer)) return true;
+    removed.push(offer);
+    return false;
+  });
+  return removed;
+}
+
+export function enqueueOffer(room, offer) {
+  if (!room.cards || !offer?.playerId || !offer.card || !offer.key) return false;
+  ensureOffers(room);
+  if (offer.card === "hide") {
+    room.cards.offers = room.cards.offers.filter((item) => !(item.playerId === offer.playerId && item.card === "hide"));
+  }
+  const declined = room.cards.declined[offer.playerId] || [];
+  if (declined.includes(offer.key)) return false;
+  if (room.cards.offers.some((item) => item.playerId === offer.playerId && item.key === offer.key)) return false;
+  room.cards.offerSeq = (room.cards.offerSeq || 0) + 1;
+  room.cards.offers.push({
+    id: String(room.cards.offerSeq),
+    playerId: offer.playerId,
+    card: offer.card,
+    key: offer.key,
+    text: offer.text,
+    play: offer.play || {},
+    gateId: offer.gateId || null,
+    raterId: offer.raterId || null,
+  });
+  if (!stillUseful(room, room.cards.offers[room.cards.offers.length - 1])) {
+    room.cards.offers.pop();
+    return false;
+  }
+  return true;
+}
+
+export function offerHide(room, playerId) {
+  const player = findPlayer(room, playerId);
+  if (!player) return;
+  enqueueOffer(room, {
+    key: `hide:${player.score}`,
+    playerId,
+    card: "hide",
+    text: `你的分數變成了 ${player.score}，要使用隱藏兩小時嗎？`,
+  });
+}
+
+export function offerPeek(room, raterId) {
+  const game = room.game;
+  if (!game || game.kind !== "dj" || typeof game.ratings?.[raterId] !== "number") return;
+  const name = findPlayer(room, raterId)?.nickname || "旅伴";
+  for (const player of room.players) {
+    if (player.id === raterId) continue;
+    enqueueOffer(room, {
+      key: `peek:${game.videoId}:${raterId}`,
+      playerId: player.id,
+      card: "peek",
+      text: `${name}打了分，要偷看嗎？`,
+      play: { targetId: raterId },
+    });
+  }
+}
+
+export function offerRespin(room) {
+  const game = room.game;
+  if (!game || game.kind !== "dj") return;
+  const label = songStopLabel(game.wheelSongs);
+  enqueueOffer(room, {
+    key: `respin:${game.round}:${game.wheelSpin}`,
+    playerId: game.djId,
+    card: "respin",
+    text: `轉到了${label}，要再轉一次嗎？`,
+  });
+}
+
+export function offerPass(room) {
+  const game = room.game;
+  if (!game || game.kind !== "dj") return;
+  enqueueOffer(room, {
+    key: `pass:${game.round}:${game.djId}`,
+    playerId: game.djId,
+    card: "pass",
+    text: "輪到你了，要使用這輪不當嗎？",
+  });
+}
+
+export function offerExtra(room) {
+  const game = room.game;
+  if (!game || game.kind !== "dj") return;
+  const label = songStopLabel(game.songs) || "這幾首";
+  for (const player of room.players) {
+    enqueueOffer(room, {
+      key: `extra:${game.round}`,
+      playerId: player.id,
+      card: "extra",
+      text: `這一輪是${label}，要多播一首嗎？`,
+    });
+  }
+}
+
+export function offerDouble(room) {
+  const game = room.game;
+  if (!game || game.kind !== "dj") return;
+  for (const player of room.players) {
+    if (player.id === game.djId) continue;
+    enqueueOffer(room, {
+      key: `double:${game.videoId}`,
+      playerId: player.id,
+      card: "double",
+      text: "這一首要使用加倍嗎？",
+    });
+  }
+}
+
+export function ratingGates(room, raterId, value) {
+  const game = room.game;
+  if (!game || (value !== -1 && value !== -2)) return [];
+  const name = findPlayer(room, raterId)?.nickname || "旅伴";
+  const gates = [];
+  if (!(game.blockVideoId && game.blockVideoId === game.videoId)) {
+    for (const player of room.players) {
+      if (player.id === raterId || !holds(room, player.id, "block")) continue;
+      gates.push({
+        key: `block:${game.videoId}:${raterId}`,
+        playerId: player.id,
+        card: "block",
+        text: `${name}給了 ${value}，要使用擋負分嗎？`,
+        gateId: `rate:${raterId}`,
+        raterId,
+      });
+    }
+  }
+  if (!game.shield && holds(room, game.djId, "shield")) {
+    gates.push({
+      key: `shield:${game.videoId}:${raterId}`,
+      playerId: game.djId,
+      card: "shield",
+      text: `${name}給了 ${value}，要使用護身嗎？`,
+      gateId: `rate:${raterId}`,
+      raterId,
+    });
+  }
+  return gates;
+}
+
+export function declinePrompt(room, playerId) {
+  const offers = room.cards?.offers || [];
+  const index = offers.findIndex((offer) => offer.playerId === playerId);
+  if (index < 0) return null;
+  const [offer] = offers.splice(index, 1);
+  if (!room.cards.declined[playerId]) room.cards.declined[playerId] = [];
+  room.cards.declined[playerId].push(offer.key);
+  return offer;
+}
+
+export function takeUsedPrompt(room, playerId, cardId) {
+  const offers = room.cards?.offers || [];
+  const index = offers.findIndex((offer) => offer.playerId === playerId && offer.card === cardId);
+  if (index < 0) return null;
+  const [offer] = offers.splice(index, 1);
+  if (!room.cards.declined[playerId]) room.cards.declined[playerId] = [];
+  room.cards.declined[playerId].push(offer.key);
+  return offer;
+}
+
+export function promptFor(room, viewerId) {
+  const offer = (room.cards?.offers || []).find((item) => item.playerId === viewerId);
+  if (!offer) return null;
+  return {
+    card: offer.card,
+    text: offer.text,
+    targetId: offer.play?.targetId || null,
+  };
 }

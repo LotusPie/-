@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CardFace } from "./card-faces.jsx";
 import { PersonFace, ProfileView } from "./profile.jsx";
 
 export function playerOf(room, id) {
@@ -203,6 +204,30 @@ export function PageSwitch({ page, onChange, dev = false }) {
         </button>
       ))}
     </nav>
+  );
+}
+
+export function CardPrompt({ room, act }) {
+  const prompt = room?.prompt;
+  if (!prompt) return null;
+  const name = room.cards?.shop?.find((card) => card.id === prompt.card)?.name || "";
+  return (
+    <div className="card-sheet" role="dialog" aria-label={name || "卡牌"}>
+      <CardFace id={prompt.card} name={name} />
+      <p className="card-sheet-text">{prompt.text}</p>
+      <div className="row">
+        <button className="secondary" type="button" onClick={() => act({ name: "cardDecline" })}>
+          這次不用
+        </button>
+        <button
+          className="primary"
+          type="button"
+          onClick={() => act({ name: "cardPlay", card: prompt.card, targetId: prompt.targetId || undefined })}
+        >
+          使用
+        </button>
+      </div>
+    </div>
   );
 }
 

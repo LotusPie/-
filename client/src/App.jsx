@@ -3,7 +3,7 @@ import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
 import { DjGame } from "./dj.jsx";
 import { CardDesk } from "./cards.jsx";
 import { DevPanel } from "./dev.jsx";
-import { Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
+import { CardPrompt, Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
 import { ProfilePage } from "./profile.jsx";
 
 async function writeText(text) {
@@ -193,6 +193,7 @@ export default function App() {
         )}
       </footer>
       <PageSwitch page={page} onChange={choosePage} dev={devOn} />
+      {room ? <CardPrompt room={room} act={act} /> : null}
       {toast && <p className="toast">{toast}</p>}
     </div>
   );

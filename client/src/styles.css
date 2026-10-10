@@ -1350,6 +1350,43 @@ html {
   margin: 0;
 }
 
+.card-sheet {
+  position: fixed;
+  z-index: 6;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(calc(100% - 24px), 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--card);
+  border: 2px solid var(--ink);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+}
+
+.card-sheet .card-face {
+  width: min(148px, 42vw);
+  margin: 0 auto;
+}
+
+.card-sheet-text {
+  margin: 0;
+  font-weight: 700;
+  text-align: center;
+}
+
+.card-sheet .row {
+  display: flex;
+  gap: 8px;
+}
+
+.card-sheet .row button {
+  flex: 1;
+}
+
 .score-page h2 {
   font-size: clamp(1.6rem, 6vw, 2rem);
 }

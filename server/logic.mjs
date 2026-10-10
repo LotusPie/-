@@ -1,6 +1,6 @@
 import { promptDeck, vibeDeck, scoreDeck } from "./decks.mjs";
-import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction } from "./dj.mjs";
-import { buyCard, clearRoundCards, forgetPlayer, hiddenFrom, initCards, playCard, presentCards, scoreHideUntil, songLimit, spinDraw, takeDraw } from "./cards.mjs";
+import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction, releaseRating, syncPrompts } from "./dj.mjs";
+import { buyCard, clearRoundCards, declinePrompt, forgetPlayer, hiddenFrom, initCards, offerHide, playCard, presentCards, promptFor, scoreHideUntil, songLimit, spinDraw, takeDraw, takeUsedPrompt } from "./cards.mjs";
 
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
@@ -421,8 +421,10 @@ export function setPlayerScore(room, playerId, score) {
   if (typeof score !== "number" || !Number.isInteger(score) || score < -999 || score > 9999) {
     return { error: "這個分數不行。" };
   }
+  const before = player.score;
   player.score = score;
   room.updatedAt = Date.now();
+  if (player.score !== before) offerHide(room, playerId);
   return { ok: true };
 }
 
@@ -435,6 +437,8 @@ export function removePlayer(room, playerId) {
     leaving.ws = null;
   }
   forgetPlayer(room, playerId);
+  if (room.game?.pendingRatings) delete room.game.pendingRatings[playerId];
+  if (room.game?.ratingQueue) delete room.game.ratingQueue[playerId];
   room.players = room.players.filter((player) => player.id !== playerId);
   if (room.hostId === playerId && room.players[0]) room.hostId = room.players[0].id;
   if (room.game?.votes) delete room.game.votes[playerId];
@@ -660,8 +664,20 @@ export function applyAction(room, playerId, msg) {
   if (name === "profileSave") return saveProfile(room, playerId, msg);
   if (name === "cardPlay") {
     const played = playCard(room, playerId, msg);
+    if (played?.error) return played;
+    syncPrompts(room);
+    const offer = takeUsedPrompt(room, playerId, msg.card);
+    if (offer) releaseRating(room, offer);
+    syncPrompts(room);
     if (played?.passSeat) return advanceDj(room, "skip");
-    return played;
+    return { ok: true };
+  }
+  if (name === "cardDecline") {
+    syncPrompts(room);
+    const offer = declinePrompt(room, playerId);
+    if (offer) releaseRating(room, offer);
+    syncPrompts(room);
+    return { ok: true };
   }
   if (room.game?.kind === "dj" && name.startsWith("dj")) return handleDjAction(room, playerId, msg);
   if (!room.game) return { error: "現在還在房間裡，先選一個遊戲。" };
@@ -676,7 +692,18 @@ export function applyAction(room, playerId, msg) {
   return { error: "還沒有這個動作。" };
 }
 
+function visibleRatings(game, viewerId) {
+  const merged = { ...(game.ratings || {}) };
+  for (const [id, value] of Object.entries(game.pendingRatings || {})) {
+    if (viewerId === game.djId || viewerId === id) merged[id] = value;
+  }
+  return Object.fromEntries(
+    Object.entries(merged).map(([id, value]) => [id, id === viewerId || viewerId === game.djId ? value : true]),
+  );
+}
+
 export function serialize(room, viewerId) {
+  syncPrompts(room);
   const game = room.game;
   let votes = {};
   if (game?.kind === "score") {
@@ -718,6 +745,7 @@ export function serialize(room, viewerId) {
       };
     }),
     cards: presentCards(room, viewerId),
+    prompt: promptFor(room, viewerId),
     game: game
       ? {
           kind: game.kind,
@@ -750,9 +778,7 @@ export function serialize(room, viewerId) {
           wheelSpin: game.wheelSpin || 0,
           reel: game.reel == null ? null : game.reel,
           reelSpin: game.reelSpin || 0,
-          ratings: Object.fromEntries(
-            Object.entries(game.ratings || {}).map(([id, value]) => [id, id === viewerId ? value : true]),
-          ),
+          ratings: visibleRatings(game, viewerId),
         }
       : null,
   };
