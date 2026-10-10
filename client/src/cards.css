@@ -36,25 +36,29 @@
 
 .collect-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
-  gap: 18px 14px;
-  justify-items: center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 10px;
+  justify-items: stretch;
 }
 
 .collect-card {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: min(100%, 280px);
+  gap: 8px;
+  width: 100%;
+  max-width: 280px;
   min-width: 0;
+  justify-self: center;
   background: transparent;
   padding: 0;
 }
 
 .card-face {
+  container-type: inline-size;
   position: relative;
   width: 100%;
-  filter: drop-shadow(0 10px 16px rgba(48, 32, 16, 0.12));
+  filter: drop-shadow(0 8px 12px rgba(48, 32, 16, 0.12));
 }
 
 .card-face svg {
@@ -75,17 +79,23 @@
   justify-content: center;
   color: #fffaf3;
   font-weight: 700;
-  font-size: 1.35rem;
-  letter-spacing: 0.04em;
+  font-size: clamp(0.72rem, 13cqi, 1.35rem);
+  letter-spacing: 0;
   line-height: 1;
   pointer-events: none;
+}
+
+@container (min-width: 220px) {
+  .card-face-name {
+    letter-spacing: 0.04em;
+  }
 }
 
 .collect-card.is-on .card-face,
 .collect-card.is-open .card-face {
   outline: 3px solid var(--accent, var(--ink));
-  outline-offset: 4px;
-  border-radius: 22px;
+  outline-offset: 2px;
+  border-radius: 18px;
 }
 
 .collect-mark {
@@ -122,14 +132,33 @@
 }
 
 .collect-actions .texty {
-  flex: 0 0 auto;
-  padding: 0 12px;
+  flex: 1 1 auto;
+  padding: 8px 6px;
 }
 
 .collect-actions .primary,
 .collect-actions .secondary,
 .card-picks button {
-  flex: 1 1 8rem;
+  flex: 1 1 auto;
+  padding: 8px 6px;
+}
+
+@container (max-width: 220px) {
+  .collect-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .collect-actions .texty,
+  .collect-actions .primary,
+  .collect-actions .secondary {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  .collect-mark {
+    align-self: center;
+  }
 }
 
 .card-picks button.person-pick {
@@ -144,6 +173,12 @@
 
 .card-notes {
   padding-left: 1.1rem;
+}
+
+@media (min-width: 1100px) {
+  .collect-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
 }
 
 .dj-game .rate-row {
