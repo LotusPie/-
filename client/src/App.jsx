@@ -115,6 +115,7 @@ export default function App() {
   const returning = !room && status === "connecting" && Boolean(loadSession()?.playerId);
   const pending = status === "connecting";
   const onPlay = page === "play";
+  const djScreen = onPlay && room?.game?.kind === "dj";
   const appClass = ["app", room ? "in-room" : "", page === "rank" ? "show-rank" : "", page === "cards" ? "show-cards" : ""]
     .filter(Boolean)
     .join(" ");
@@ -124,7 +125,7 @@ export default function App() {
       <header className="topbar">
         <p className="brand-en">on the trip</p>
         <div className="title-row">
-          <h1>旅途小遊戲</h1>
+          {djScreen ? null : <h1>旅途小遊戲</h1>}
           {room && (
             <p className="code" aria-label={`房間代碼 ${room.code}`}>
               {room.code}

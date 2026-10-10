@@ -1295,6 +1295,9 @@ function testPrompts() {
   assert.equal(djUi.includes("`+${value}`"), true);
   assert.equal(djUi.includes("有人"), true);
   assert.equal(djUi.includes("ratingFeed"), true);
+  assert.equal(djUi.includes("一首歌、二首歌、三首歌、此輪跳過，機會一樣。"), false);
+  assert.equal(djUi.includes("wheelLanded"), true);
+  assert.equal(app.includes("djScreen"), true);
   assert.equal(cardsUi.includes("使用"), true);
 }
 

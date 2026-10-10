@@ -25,6 +25,7 @@ function loadYoutubeApi() {
 }
 
 const WHEEL_MS = 2500;
+const SKIP_HOLD_MS = 1200;
 const REEL_MS = 2600;
 const REEL_ROW = 56;
 
@@ -641,8 +642,10 @@ export function DjGame({ room, youId, act }) {
   const dj = playerOf(room, game.djId);
   const djName = dj?.nickname || nameOf(room, game.djId);
   const [url, setUrl] = useState("");
+  const [shownSpin, setShownSpin] = useState(0);
   const actRef = useRef(act);
   actRef.current = act;
+  const wheelLanded = game.step === "pick" && game.wheelSpin > 0 && shownSpin === game.wheelSpin && game.wheelSongs != null;
 
   useEffect(() => {
     setUrl("");
@@ -653,10 +656,18 @@ export function DjGame({ room, youId, act }) {
   }, [game.step]);
 
   useEffect(() => {
+    if (game.step !== "pick" || !game.wheelSpin || game.wheelSongs == null) return undefined;
+    const spin = game.wheelSpin;
+    const timer = setTimeout(() => setShownSpin(spin), reducedMotion() ? 0 : WHEEL_MS);
+    return () => clearTimeout(timer);
+  }, [game.step, game.wheelSpin, game.wheelSongs]);
+
+  useEffect(() => {
     if (!mine || game.step !== "pick" || !game.wheelSpin || game.wheelSongs == null) return undefined;
     if ((game.extraSpins || 0) > 0) return undefined;
     const songs = game.wheelSongs;
-    const timer = setTimeout(() => actRef.current({ name: "djMode", songs }), reducedMotion() ? 0 : WHEEL_MS);
+    const wait = (reducedMotion() ? 0 : WHEEL_MS) + (songs === 0 ? SKIP_HOLD_MS : 0);
+    const timer = setTimeout(() => actRef.current({ name: "djMode", songs }), wait);
     return () => clearTimeout(timer);
   }, [mine, game.step, game.wheelSpin, game.wheelSongs, game.extraSpins]);
 
@@ -686,16 +697,14 @@ export function DjGame({ room, youId, act }) {
       {game.step === "pick" && (
         <section className="stack">
           <ModeWheel wheelSongs={game.wheelSongs} wheelSpin={game.wheelSpin || 0} />
-          {game.wheelSongs === 0 ? (
+          {wheelLanded && game.wheelSongs === 0 ? (
             <p className="reel-result" aria-live="polite">
               <span className="kicker">轉盤</span>
               <strong>此輪跳過</strong>
             </p>
-          ) : (
-            <p className="turn-line">
-              {game.wheelSongs ? songLabel(game.wheelSongs) : "一首歌、二首歌、三首歌、此輪跳過，機會一樣。"}
-            </p>
-          )}
+          ) : wheelLanded ? (
+            <p className="turn-line">{songLabel(game.wheelSongs)}</p>
+          ) : null}
           {mine ? (
             <button
               className="primary xl"
