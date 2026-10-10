@@ -69,7 +69,10 @@ const CARD_COPY = {
   question: { detail: "對方十分鐘內只能用問句說話。時間可以疊加。" },
   three: { detail: "對方十分鐘內，每次開口最多三個字。時間可以疊加。" },
   laugh: { detail: "對方十分鐘內不能笑。時間可以疊加。" },
-  agree: { detail: "對方十分鐘內不能說好、對、是、嗯。時間可以疊加。" },
+  agree: {
+    detail:
+      "對方十分鐘內不能說好、對、是、嗯。時間可以疊加。這張圖的勾來自 small-n-flat（paomedia，CC0），叉來自 Zuzu-Typ 的 Cross.svg（CC0）。",
+  },
   lyric: { detail: "對方十分鐘內要用一句歌詞回答。時間可以疊加。" },
   echo: { detail: "對方十分鐘內要先重複對方最後幾個字，再回答。時間可以疊加。" },
   call: { detail: "對方十分鐘內，每句話開頭要先說一位旅伴的名字。時間可以疊加。" },
@@ -78,6 +81,7 @@ const CARD_COPY = {
 
 
 const DRAW_WHEEL_MS = 2400;
+const FUNCTION_CREDIT = "圖示來自 Twemoji（Twitter 與其他貢獻者，CC BY 4.0）。";
 
 function sliceMid(slices, id) {
   const total = slices.reduce((sum, slice) => sum + slice.weight, 0) || 1;
@@ -383,6 +387,7 @@ export function CardDesk({ room, youId, act, error }) {
           <h2>功能牌</h2>
           <p>{functionHand.length} 張 · 沒有張數上限</p>
         </header>
+        <p className="hint">{FUNCTION_CREDIT}</p>
         {cards.vouchers > 0 ? (
           <div className="card-picks">
             <p className="hint">你有 {cards.vouchers} 張兌換券。選一張功能牌，券就用掉。</p>
@@ -468,6 +473,7 @@ export function CardDesk({ room, youId, act, error }) {
           <h2>功能牌</h2>
           <p>一張 10 分</p>
         </header>
+        <p className="hint">{FUNCTION_CREDIT}</p>
         <div className="collect-grid">
           {functionShop.map((card) => {
             const copy = CARD_COPY[card.id] || { detail: card.rule };

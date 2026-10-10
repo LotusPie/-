@@ -1,3 +1,16 @@
+import muteArt from "./assets/function-cards/mute.svg";
+import sealArt from "./assets/function-cards/seal.svg";
+import pronounArt from "./assets/function-cards/pronoun.svg";
+import questionArt from "./assets/function-cards/question.svg";
+import threeArt from "./assets/function-cards/three.svg";
+import laughArt from "./assets/function-cards/laugh.svg";
+import agreeCheckArt from "./assets/function-cards/agree-check.svg";
+import agreeCrossArt from "./assets/function-cards/agree-cross.svg";
+import lyricArt from "./assets/function-cards/lyric.svg";
+import echoArt from "./assets/function-cards/echo.svg";
+import callArt from "./assets/function-cards/call.svg";
+import whisperArt from "./assets/function-cards/whisper.svg";
+
 const INK = "#211c18";
 const CREAM = "#fffaf3";
 const WELL = "#f3eadf";
@@ -396,6 +409,20 @@ function PassArt({ accent }) {
   );
 }
 
+const FUNCTION_ART = {
+  mute: [muteArt],
+  seal: [sealArt],
+  pronoun: [pronounArt],
+  question: [questionArt],
+  three: [threeArt],
+  laugh: [laughArt],
+  agree: [agreeCheckArt, agreeCrossArt],
+  lyric: [lyricArt],
+  echo: [echoArt],
+  call: [callArt],
+  whisper: [whisperArt],
+};
+
 const ARTS = {
   hide: HideArt,
   swap: SwapArt,
@@ -414,10 +441,26 @@ const ARTS = {
 export function CardFace({ id, name }) {
   const accent = cardAccent(id);
   const Art = ARTS[id];
+  const photos = FUNCTION_ART[id];
   return (
     <div className="card-face" style={{ "--accent": accent }}>
       <svg viewBox="0 0 240 336" aria-hidden="true">
-        <CardShell accent={accent}>{Art ? <Art accent={accent} /> : null}</CardShell>
+        <CardShell accent={accent}>
+          {Art ? <Art accent={accent} /> : null}
+          {photos
+            ? photos.map((src) => (
+                <image
+                  key={src}
+                  href={src}
+                  x="42"
+                  y="59"
+                  width="156"
+                  height="156"
+                  preserveAspectRatio="xMidYMid meet"
+                />
+              ))
+            : null}
+        </CardShell>
       </svg>
       <h3 className="card-face-name">{name}</h3>
     </div>
