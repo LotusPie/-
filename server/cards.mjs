@@ -1,3 +1,5 @@
+import { drawCooldownMs, handMaxOf, publicProfession, startingSpins, wheelBoost } from "./professions.mjs";
+
 export const HAND_MAX = 5;
 export const DRAW_EVERY_MS = 3 * 60 * 1000;
 export const HIDE_MS = 2 * 60 * 60 * 1000;
@@ -54,7 +56,8 @@ const DRAW_WEIGHTS = [
   ["swap", 2],
 ];
 
-function drawTable() {
+function drawTable(player) {
+  const boost = wheelBoost(player);
   const slices = [];
   const missing = [];
   for (const [id, weight] of DRAW_WEIGHTS) {
@@ -63,7 +66,7 @@ function drawTable() {
       missing.push(id);
       continue;
     }
-    slices.push({ id, name: spec.name, weight: weight * 90 });
+    slices.push({ id, name: spec.name, weight: weight * 90 * (id === boost ? 2 : 1) });
   }
   slices.push({ id: "voucher", name: "兌換券", weight: 1000 });
   return { slices, missing };
@@ -77,14 +80,19 @@ function ensureSpin(cards) {
   if (!cards.lastSpin) cards.lastSpin = {};
 }
 
-function spinsLeftOf(cards, playerId) {
+function spinsLeftOf(cards, player) {
   ensureSpin(cards);
-  if (cards.spinsLeft[playerId] == null) cards.spinsLeft[playerId] = 3;
+  const playerId = player.id;
+  if (cards.spinsLeft[playerId] == null) cards.spinsLeft[playerId] = startingSpins(player);
   return cards.spinsLeft[playerId];
 }
 
-function rollDrawCard() {
-  const table = drawTable();
+function handFullMessage(player) {
+  return handMaxOf(player) === 6 ? "手上已經有六張牌。" : "手上已經有五張牌。";
+}
+
+function rollDrawCard(player) {
+  const table = drawTable(player);
   if (!table.slices.length) return null;
   const total = table.slices.reduce((sum, slice) => sum + slice.weight, 0);
   let roll = Math.random() * total;
@@ -101,14 +109,14 @@ export function spinDraw(room, playerId, now = Date.now()) {
   if (!player) return { error: "你不在這個房間。" };
   if (!room.cards) return { error: "現在不能抽牌。" };
   const hand = handOf(room, playerId);
-  if (hand.length >= HAND_MAX) return { error: "手牌滿了，先用掉一張。" };
+  if (hand.length >= handMaxOf(player)) return { error: "手牌滿了，先用掉一張。" };
   const cards = room.cards;
   ensureSpin(cards);
   if (cards.pendingDraw[playerId]) return { error: "轉盤還在轉。" };
-  const left = spinsLeftOf(cards, playerId);
+  const left = spinsLeftOf(cards, player);
   const readyAt = cards.spinReady[playerId] || 0;
   if (left <= 0 && now < readyAt) return { error: "還沒到可以轉的時間。" };
-  const picked = rollDrawCard();
+  const picked = rollDrawCard(player);
   if (!picked) return { error: "現在沒有可以抽的牌。" };
   cards.pendingDraw[playerId] = { card: picked.id, at: now };
   cards.wheelSpin[playerId] = (cards.wheelSpin[playerId] || 0) + 1;
@@ -127,31 +135,35 @@ export function takeDraw(room, playerId, now = Date.now()) {
     if (!cards.vouchers) cards.vouchers = {};
     cards.vouchers[playerId] = (cards.vouchers[playerId] || 0) + 1;
     delete cards.pendingDraw[playerId];
-    const voucherLeft = spinsLeftOf(cards, playerId);
+    const voucherLeft = spinsLeftOf(cards, player);
     if (voucherLeft > 0) cards.spinsLeft[playerId] = voucherLeft - 1;
-    if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + DRAW_SPIN_MS;
+    if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + drawCooldownMs(player);
     cards.lastSpin[playerId] = { card: "voucher", at: now };
     return { ok: true, card: "voucher" };
   }
   const hand = handOf(room, playerId);
-  if (hand.length >= HAND_MAX) return { error: "手牌滿了，先用掉一張。" };
+  if (hand.length >= handMaxOf(player)) return { error: "手牌滿了，先用掉一張。" };
   hand.push(pending.card);
   delete cards.pendingDraw[playerId];
-  const left = spinsLeftOf(cards, playerId);
+  const left = spinsLeftOf(cards, player);
   if (left > 0) cards.spinsLeft[playerId] = left - 1;
-  if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + DRAW_SPIN_MS;
+  if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + drawCooldownMs(player);
   cards.lastSpin[playerId] = { card: pending.card, at: now };
   return { ok: true, card: pending.card };
 }
 
-function presentDraw(cards, viewerId) {
-  const table = drawTable();
+function presentDraw(cards, viewer) {
+  const viewerId = viewer?.id;
+  const table = drawTable(viewer);
   const readyAt = cards?.spinReady?.[viewerId] || 0;
   const last = cards?.lastSpin?.[viewerId];
-  const spinsLeft = cards?.spinsLeft?.[viewerId] == null ? 3 : cards.spinsLeft[viewerId];
+  const spinsLeft = cards?.spinsLeft?.[viewerId] == null ? startingSpins(viewer) : cards.spinsLeft[viewerId];
   return {
     readyAt,
     spinsLeft,
+    freeDraws: startingSpins(viewer),
+    cooldownMs: drawCooldownMs(viewer),
+    handMax: handMaxOf(viewer),
     wheelSpin: cards?.wheelSpin?.[viewerId] || 0,
     wheelCard: cards?.pendingDraw?.[viewerId]?.card || null,
     lastId: last?.card || null,
@@ -251,7 +263,7 @@ export function buyCard(room, playerId, cardId) {
   if (player.score < 0) return { error: "分數是負的，不能買。" };
   if (player.score < spec.cost) return { error: "分數不夠，不能買。" };
   const hand = handOf(room, playerId);
-  if (hand.length >= HAND_MAX) return { error: "手上已經有五張牌。" };
+  if (hand.length >= handMaxOf(player)) return { error: handFullMessage(player) };
   const before = player.score;
   player.score -= spec.cost;
   hand.push(spec.id);
@@ -582,6 +594,7 @@ export function presentCards(room, viewerId) {
           nickname: peekPlayer?.nickname || "旅伴",
           photo: typeof peekPlayer?.profile?.photo === "string" ? peekPlayer.profile.photo : "",
           emoji: typeof peekPlayer?.profile?.emoji === "string" ? peekPlayer.profile.emoji : "",
+          profession: publicProfession(peekPlayer),
           value: peek.value,
         }
       : null,
@@ -594,7 +607,8 @@ export function presentCards(room, viewerId) {
       nextDjId: game?.nextDjId || cards?.pendingNext || null,
       extraSpins: game?.extraSpins || 0,
     },
-    draw: presentDraw(cards, viewerId),
+    handMax: handMaxOf(findPlayer(room, viewerId)),
+    draw: presentDraw(cards, findPlayer(room, viewerId)),
   };
 }
 
@@ -626,10 +640,11 @@ export function queueNextDj(room, targetId) {
 }
 
 export function giveCard(room, playerId, cardId) {
-  if (!findPlayer(room, playerId)) return { error: "請選一位旅伴。" };
+  const player = findPlayer(room, playerId);
+  if (!player) return { error: "請選一位旅伴。" };
   if (!specOf(cardId)) return { error: "沒有這張牌。" };
   const hand = handOf(room, playerId);
-  if (hand.length >= HAND_MAX) return { error: "手上已經有五張牌。" };
+  if (hand.length >= handMaxOf(player)) return { error: handFullMessage(player) };
   hand.push(cardId);
   return { ok: true };
 }

@@ -1421,3 +1421,51 @@ html {
     min-height: 48px;
   }
 }
+
+.profession-pick h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.profession-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.profession-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 48px;
+  padding: 8px;
+  text-align: left;
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 16px;
+}
+
+.profession-grid button.is-on {
+  border-color: var(--terra);
+  box-shadow: 0 0 0 3px rgba(127, 47, 36, 0.16);
+}
+
+.profession-grid img {
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.profession-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.profession-grid span {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.35;
+}

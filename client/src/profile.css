@@ -122,6 +122,58 @@ button.who-btn {
   text-decoration: none;
 }
 
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.person-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.profession-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.profession-badge img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid var(--line);
+  background: #fff;
+}
+
+.profession-badge span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.profession-badge.is-large img,
+.person-mark.is-large .profession-badge img {
+  width: 56px;
+  height: 56px;
+  flex-basis: 56px;
+  border-radius: 12px;
+}
+
+.profession-badge.is-large span,
+.person-mark.is-large .profession-badge span {
+  font-size: 0.95rem;
+}
+
 .person-face {
   width: 40px;
   height: 40px;

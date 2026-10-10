@@ -26,6 +26,7 @@ async function writeText(text) {
 
 const PAGE_KEY = "on-the-trip-page";
 const DEV_KEY = "on-the-trip-dev";
+const PROF_KEY = "on-the-trip-profession";
 
 function devEnabledNow() {
   try {
@@ -63,6 +64,21 @@ export default function App() {
   const { room, youId, error, setError, status, create, join, leave, act, dev } = useRoom();
   const [devOn] = useState(devEnabledNow);
   const [nickname, setNickname] = useState(() => loadSession()?.nickname || "");
+  const [profession, setProfessionState] = useState(() => {
+    try {
+      return sessionStorage.getItem(PROF_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
+  function setProfession(id) {
+    setProfessionState(id);
+    try {
+      sessionStorage.setItem(PROF_KEY, id);
+    } catch {
+      // the choice still stays on this page until reload
+    }
+  }
   const [linkCode] = useState(() => roomCodeFromLocation());
   const [code, setCode] = useState(linkCode);
   const [toast, setToast] = useState("");
@@ -155,8 +171,10 @@ export default function App() {
             setNickname={setNickname}
             code={code}
             setCode={setCode}
-            onCreate={create}
-            onJoin={join}
+            profession={profession}
+            setProfession={setProfession}
+            onCreate={(name) => create(name, profession)}
+            onJoin={(name, roomCode) => join(name, roomCode, profession)}
             error={error}
             pending={pending}
             invited={invited}

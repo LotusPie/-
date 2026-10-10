@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ProfessionMark } from "./professions.jsx";
 
 const AVATARS = ["🎵", "🎧", "🎸", "🎤", "🚗", "🧳", "🌙", "⭐", "🍵", "🌊"];
 const PHOTO_MAX = 200 * 1024;
@@ -62,8 +63,11 @@ export function PersonFace({ nickname = "旅伴", profile, large = false }) {
   const emoji = AVATARS.includes(profile?.emoji) ? profile.emoji : "";
   const letter = [...(nickname || "旅")][0] || "旅";
   return (
-    <span className={large ? "person-face is-large" : "person-face"} aria-hidden="true">
-      {photo ? <img src={photo} alt="" /> : <span>{emoji || letter}</span>}
+    <span className={large ? "person-mark is-large" : "person-mark"}>
+      <span className={large ? "person-face is-large" : "person-face"} aria-hidden="true">
+        {photo ? <img src={photo} alt="" /> : <span>{emoji || letter}</span>}
+      </span>
+      <ProfessionMark profession={profile?.profession} large={large} />
     </span>
   );
 }
@@ -73,6 +77,7 @@ export function ProfileView({ nickname, profile, onClose }) {
     <article className="profile-card">
       <PersonFace large nickname={nickname} profile={profile} />
       <h3>{nickname}</h3>
+      {profile?.profession?.effect ? <p className="profile-meta">{profile.profession.effect}</p> : null}
       <p className={profile?.line ? "profile-line" : "profile-line empty"}>
         {profile?.line || "這個人還沒留下一句話。"}
       </p>
@@ -148,9 +153,13 @@ export function ProfilePage({ room, youId, act }) {
     <section className="panel profile-page stack">
       <h2>個人</h2>
       <form className="stack" onSubmit={onSave}>
-        <div className="profile-face" aria-hidden="true">
-          {photo ? <img src={photo} alt="" /> : <span>{emoji}</span>}
+        <div className="profile-identity">
+          <div className="profile-face" aria-hidden="true">
+            {photo ? <img src={photo} alt="" /> : <span>{emoji}</span>}
+          </div>
+          <ProfessionMark profession={you.profile?.profession} large />
         </div>
+        {you.profile?.profession?.effect ? <p className="hint">{you.profile.profession.effect}</p> : null}
         <div className="avatar-choices" role="group" aria-label="頭像">
           {AVATARS.map((item) => (
             <button

@@ -1,6 +1,7 @@
 import { promptDeck, vibeDeck, scoreDeck } from "./decks.mjs";
 import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction, releaseRating, syncPrompts } from "./dj.mjs";
 import { buyCard, catchEffect, clearRoundCards, declinePrompt, forgetPlayer, hiddenFrom, initCards, offerHide, playCard, presentCards, promptFor, redeemVoucher, scoreHideUntil, songLimit, spinDraw, takeDraw, takeUsedPrompt } from "./cards.mjs";
+import { professionOf, publicProfession, startingSpins } from "./professions.mjs";
 
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
@@ -49,9 +50,23 @@ function freshPiles() {
   };
 }
 
-export function createPlayerRoom(nickname) {
+function grantProfession(room, player, professionId) {
+  const job = professionOf(professionId);
+  if (!job) return { error: "請先選一個職業。" };
+  player.profession = job.id;
+  if (job.grant) {
+    if (!room.cards.hands[player.id]) room.cards.hands[player.id] = [];
+    room.cards.hands[player.id].push(job.grant);
+  }
+  if (job.freeDraws) room.cards.spinsLeft[player.id] = job.freeDraws;
+  return { ok: true };
+}
+
+export function createPlayerRoom(nickname, professionId) {
   const parsed = normalizeNickname(nickname);
   if (parsed.error) return { error: parsed.error };
+  const job = professionOf(professionId);
+  if (!job) return { error: "請先選一個職業。" };
   const player = {
     id: crypto.randomUUID(),
     nickname: parsed.nickname,
@@ -71,6 +86,7 @@ export function createPlayerRoom(nickname) {
     cursors: { vibe: 0, honor: 0, treat: 0 },
     updatedAt: Date.now(),
   };
+  grantProfession(room, player, job.id);
   return { room, youId: player.id };
 }
 
@@ -116,6 +132,7 @@ export function presentProfile(player) {
     line: typeof profile.line === "string" ? profile.line : "",
     from: typeof profile.from === "string" ? profile.from : "",
     music: typeof profile.music === "string" ? profile.music : "",
+    profession: publicProfession(player),
   };
 }
 
@@ -339,7 +356,7 @@ export function reconcile(room) {
   advanceDisconnectedDj(room);
 }
 
-export function joinRoom(room, { nickname, playerId } = {}) {
+export function joinRoom(room, { nickname, playerId, profession } = {}) {
   room.updatedAt = Date.now();
   if (playerId) {
     const existing = findPlayer(room, playerId);
@@ -358,6 +375,8 @@ export function joinRoom(room, { nickname, playerId } = {}) {
   }
   const parsed = normalizeNickname(nickname);
   if (parsed.error) return { error: parsed.error };
+  const job = professionOf(profession);
+  if (!job) return { error: "請先選一個職業。" };
   const player = {
     id: crypto.randomUUID(),
     nickname: parsed.nickname,
@@ -366,6 +385,8 @@ export function joinRoom(room, { nickname, playerId } = {}) {
     ws: null,
   };
   room.players.push(player);
+  const granted = grantProfession(room, player, job.id);
+  if (granted.error) return granted;
   return { youId: player.id };
 }
 
@@ -750,7 +771,7 @@ export function serialize(room, viewerId) {
         scoreHideUntil: scoreHideUntil(room, player.id),
         connected: player.connected,
         fake: Boolean(player.fake),
-        drawsLeft: room.cards?.spinsLeft?.[player.id] == null ? 3 : room.cards.spinsLeft[player.id],
+        drawsLeft: room.cards?.spinsLeft?.[player.id] == null ? startingSpins(player) : room.cards.spinsLeft[player.id],
         drawReadyAt: room.cards?.spinReady?.[player.id] || 0,
         profile: presentProfile(player),
       };

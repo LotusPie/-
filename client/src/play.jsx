@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CardFace } from "./card-faces.jsx";
 import { PersonFace, ProfileView } from "./profile.jsx";
+import { PROFESSIONS } from "./professions.jsx";
 
 export function playerOf(room, id) {
   return room?.players?.find((player) => player.id === id) || null;
@@ -45,6 +46,8 @@ export function Home({
   setNickname,
   code,
   setCode,
+  profession,
+  setProfession,
   onCreate,
   onJoin,
   error,
@@ -73,6 +76,27 @@ export function Home({
         </p>
       )}
 
+      <section className="panel stack profession-pick">
+        <h2>選一個職業</h2>
+        <p className="hint">進房間之前先選一個。一位旅伴只能有一個職業。</p>
+        <div className="profession-grid" role="listbox" aria-label="職業">
+          {PROFESSIONS.map((job) => (
+            <button
+              key={job.id}
+              type="button"
+              role="option"
+              aria-selected={profession === job.id}
+              className={profession === job.id ? "is-on" : ""}
+              onClick={() => setProfession(job.id)}
+            >
+              <img src={job.src} alt="" />
+              <strong>{job.name}</strong>
+              <span>{job.effect}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <form
         className="panel stack"
         onSubmit={(event) => {
@@ -91,7 +115,7 @@ export function Home({
             required
           />
         </label>
-        <button className="primary" type="submit" disabled={pending}>
+        <button className="primary" type="submit" disabled={pending || !profession}>
           建立房間
         </button>
       </form>
@@ -119,7 +143,7 @@ export function Home({
             required
           />
         </label>
-        <button className="secondary" type="submit" disabled={pending}>
+        <button className="secondary" type="submit" disabled={pending || !profession}>
           加入房間
         </button>
       </form>
