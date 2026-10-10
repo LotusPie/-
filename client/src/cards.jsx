@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CardFace } from "./card-faces.jsx";
 import { nameOf, playerOf } from "./play.jsx";
 import { PersonFace } from "./profile.jsx";
 
@@ -242,16 +243,10 @@ export function CardDesk({ room, youId, act, error }) {
           <div className="collect-grid">
             {hand.map((id, index) => {
               const spec = specOf(id);
-              const copy = CARD_COPY[id] || { short: spec?.name || id };
               const selected = pending === id && index === hand.indexOf(id);
               return (
                 <article className={selected ? "collect-card is-on" : "collect-card"} key={`${id}-${index}`}>
-                  <div className="collect-top">
-                    <span className="stamp">手牌</span>
-                    <span className="collect-mark">1 張</span>
-                  </div>
-                  <h3>{spec?.name || id}</h3>
-                  <p className="collect-line">{copy.short}</p>
+                  <CardFace id={id} name={spec?.name || id} />
                   <div className="collect-actions">
                     {selected ? (
                       <button className="texty" type="button" onClick={() => setPending(null)}>
@@ -337,20 +332,16 @@ export function CardDesk({ room, youId, act, error }) {
         </header>
         <div className="collect-grid">
           {shop.map((card) => {
-            const copy = CARD_COPY[card.id] || { short: card.name, detail: card.name };
+            const copy = CARD_COPY[card.id] || { detail: card.name };
             const open = detailId === card.id;
             return (
               <article className={open ? "collect-card shop-card is-open" : "collect-card shop-card"} key={card.id}>
-                <div className="collect-top">
-                  <span className="stamp">牌店</span>
-                  <span className="collect-mark">{card.cost} 分</span>
-                </div>
-                <h3>{card.name}</h3>
-                <p className="collect-line">{copy.short}</p>
+                <CardFace id={card.id} name={card.name} />
                 <div className="collect-actions">
                   <button className="texty" type="button" onClick={() => setDetailId(open ? null : card.id)}>
                     {open ? "收起" : "看詳細"}
                   </button>
+                  <span className="collect-mark">{card.cost} 分</span>
                   <button className="secondary" type="button" onClick={() => act({ name: "cardBuy", card: card.id })}>
                     買下
                   </button>
