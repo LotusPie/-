@@ -1310,8 +1310,8 @@ function testFunctionCards() {
   const total = slices.reduce((sum, slice) => sum + slice.weight, 0);
   const voucher = slices.find((slice) => slice.id === "voucher");
   assert.equal(voucher.name, "兌換券");
-  assert.equal(voucher.weight / total, 0.01);
-  assert.equal((total - voucher.weight) / total, 0.99);
+  assert.equal(voucher.weight / total, 0.1);
+  assert.equal((total - voucher.weight) / total, 0.9);
   const peek = slices.find((slice) => slice.id === "peek");
   const swap = slices.find((slice) => slice.id === "swap");
   assert.equal(peek.weight / swap.weight, 14 / 2);

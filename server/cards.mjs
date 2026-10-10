@@ -63,9 +63,9 @@ function drawTable() {
       missing.push(id);
       continue;
     }
-    slices.push({ id, name: spec.name, weight: weight * 99 });
+    slices.push({ id, name: spec.name, weight: weight * 90 });
   }
-  slices.push({ id: "voucher", name: "兌換券", weight: 100 });
+  slices.push({ id: "voucher", name: "兌換券", weight: 1000 });
   return { slices, missing };
 }
 
