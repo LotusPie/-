@@ -70,7 +70,7 @@ export default function App() {
   const invited = !room && linkCode && code === linkCode ? linkCode : "";
 
   useEffect(() => {
-    document.title = room ? `房間 ${room.code} · 旅途小遊戲` : "旅途小遊戲";
+    document.title = room ? `房間 ${room.code} · on the trip` : "on the trip";
   }, [room]);
 
   useEffect(() => {
@@ -99,10 +99,10 @@ export default function App() {
 
   async function shareLink() {
     const url = roomLink(room.code);
-    const text = `來一起玩旅途小遊戲，房間代碼 ${room.code}`;
+    const text = `來一起玩 on the trip，房間代碼 ${room.code}`;
     if (navigator.share) {
       try {
-        await navigator.share({ title: "旅途小遊戲", text, url });
+        await navigator.share({ title: "on the trip", text, url });
         return;
       } catch (event) {
         if (event?.name === "AbortError") return;
@@ -115,7 +115,6 @@ export default function App() {
   const returning = !room && status === "connecting" && Boolean(loadSession()?.playerId);
   const pending = status === "connecting";
   const onPlay = page === "play";
-  const djScreen = onPlay && room?.game?.kind === "dj";
   const appClass = ["app", room ? "in-room" : "", page === "rank" ? "show-rank" : "", page === "cards" ? "show-cards" : ""]
     .filter(Boolean)
     .join(" ");
@@ -125,7 +124,6 @@ export default function App() {
       <header className="topbar">
         <p className="brand-en">on the trip</p>
         <div className="title-row">
-          {djScreen ? null : <h1>旅途小遊戲</h1>}
           {room && (
             <p className="code" aria-label={`房間代碼 ${room.code}`}>
               {room.code}

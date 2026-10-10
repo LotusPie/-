@@ -95,9 +95,9 @@ function helpHtml() {
 <html lang="zh-Hant">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>旅途小遊戲</title>
+<title>on the trip</title>
 <body style="font-family:sans-serif;background:#f3eadf;color:#211c18;padding:32px;line-height:1.6;max-width:36rem">
-<h1>旅途小遊戲</h1>
+<h1>on the trip</h1>
 <p>開發時請開 <a href="http://localhost:5173">http://localhost:5173</a>。先在專案目錄執行 <code>npm run dev</code>。</p>
 <p>若要由這個連接埠直接玩，請先 <code>npm run build</code>，再 <code>npm start</code>。</p>
 </body></html>`;
