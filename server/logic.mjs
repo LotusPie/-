@@ -693,13 +693,32 @@ export function applyAction(room, playerId, msg) {
 }
 
 function visibleRatings(game, viewerId) {
-  const merged = { ...(game.ratings || {}) };
-  for (const [id, value] of Object.entries(game.pendingRatings || {})) {
-    if (viewerId === game.djId || viewerId === id) merged[id] = value;
-  }
-  return Object.fromEntries(
-    Object.entries(merged).map(([id, value]) => [id, id === viewerId || viewerId === game.djId ? value : true]),
-  );
+  const value = game.pendingRatings?.[viewerId] ?? game.ratings?.[viewerId];
+  if (value == null) return {};
+  return { [viewerId]: value };
+}
+
+function ratingFeed(room, game, viewerId) {
+  if (game?.kind !== "dj") return [];
+  const peek = room.cards?.peek?.[viewerId];
+  const rows = [];
+  const seen = new Set();
+  const add = (id, value, pending) => {
+    if (value == null || seen.has(id)) return;
+    if (pending && viewerId !== game.djId && viewerId !== id) return;
+    seen.add(id);
+    const revealed = Boolean(peek && peek.targetId === id && !pending && typeof game.ratings?.[id] === "number");
+    const player = revealed ? findPlayer(room, id) : null;
+    const showNumber = viewerId === game.djId || viewerId === id || revealed;
+    rows.push({
+      value: showNumber ? value : true,
+      nickname: player?.nickname || null,
+      profile: player ? presentProfile(player) : null,
+    });
+  };
+  for (const [id, value] of Object.entries(game.ratings || {})) add(id, value, false);
+  for (const [id, value] of Object.entries(game.pendingRatings || {})) add(id, value, true);
+  return rows;
 }
 
 export function serialize(room, viewerId) {
@@ -779,6 +798,7 @@ export function serialize(room, viewerId) {
           reel: game.reel == null ? null : game.reel,
           reelSpin: game.reelSpin || 0,
           ratings: visibleRatings(game, viewerId),
+          ratingFeed: game.kind === "dj" ? ratingFeed(room, game, viewerId) : [],
         }
       : null,
   };

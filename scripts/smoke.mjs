@@ -1055,6 +1055,56 @@ function cueLive(room, djId, songs = 1) {
   assert.equal(applyAction(room, djId, { name: "djCue", url: watch }).ok, true);
 }
 
+function testPeekIdentity() {
+  const peek = freshRoom(["阿凱", "小魚", "阿德"]);
+  const [dj, rater, other] = peek.ids;
+  applyAction(peek.room, dj, { name: "start", game: "dj" });
+  peek.room.cards.hands[dj] = ["peek"];
+  cueLive(peek.room, dj);
+  assert.equal(applyAction(peek.room, rater, { name: "djRate", value: -2 }).ok, true);
+  const hidden = serialize(peek.room, dj);
+  assert.equal(hidden.game.ratings[rater], undefined);
+  assert.equal(JSON.stringify(hidden.game.ratingFeed).includes("小魚"), false);
+  assert.equal(JSON.stringify(hidden.game.ratingFeed).includes(rater), false);
+  assert.deepEqual(hidden.game.ratingFeed, [{ value: -2, nickname: null, profile: null }]);
+  assert.equal(hidden.prompt.text, "有人打了分，要偷看嗎？");
+  assert.equal(JSON.stringify(hidden.prompt).includes("小魚"), false);
+  const bystander = serialize(peek.room, other);
+  assert.equal(bystander.game.ratings[rater], undefined);
+  assert.equal(bystander.game.ratingFeed[0].nickname, null);
+  assert.equal(bystander.game.ratingFeed[0].value, true);
+  assert.equal(applyAction(peek.room, dj, { name: "cardPlay", card: "peek", targetId: hidden.prompt.targetId }).ok, true);
+  const shown = serialize(peek.room, dj);
+  assert.equal(shown.game.ratingFeed[0].nickname, "小魚");
+  assert.equal(shown.game.ratingFeed[0].value, -2);
+  assert.equal(shown.cards.peek.nickname, "小魚");
+  assert.equal(shown.cards.peek.value, -2);
+  assert.equal(serialize(peek.room, other).game.ratingFeed[0].nickname, null);
+  assert.equal(serialize(peek.room, rater).game.ratings[rater], -2);
+
+  const both = freshRoom(["阿凱", "小魚", "阿德"]);
+  applyAction(both.room, both.ids[0], { name: "start", game: "dj" });
+  cueLive(both.room, both.ids[0]);
+  applyAction(both.room, both.ids[1], { name: "djRate", value: 1 });
+  applyAction(both.room, both.ids[2], { name: "djRate", value: 2 });
+  both.room.cards.hands[both.ids[0]] = ["peek"];
+  const before = serialize(both.room, both.ids[0]);
+  assert.deepEqual(
+    before.game.ratingFeed.map((row) => row.nickname),
+    [null, null],
+  );
+  assert.deepEqual(
+    before.game.ratingFeed.map((row) => row.value),
+    [1, 2],
+  );
+  assert.equal(applyAction(both.room, both.ids[0], { name: "cardPlay", card: "peek", targetId: both.ids[1] }).ok, true);
+  const after = serialize(both.room, both.ids[0]).game.ratingFeed;
+  assert.equal(after[0].nickname, "小魚");
+  assert.equal(after[0].value, 1);
+  assert.equal(after[1].nickname, null);
+  assert.equal(after[1].value, 2);
+}
+
 function testPrompts() {
   const watch = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 
@@ -1068,11 +1118,14 @@ function testPrompts() {
   assert.equal(shield.room.game.ratings[shield.ids[1]], undefined);
   assert.equal(shield.room.game.step, "live");
   const asked = serialize(shield.room, shield.ids[0]);
-  assert.equal(asked.prompt.text, "小魚給了 -2，要使用護身嗎？");
+  assert.equal(asked.prompt.text, "有人給了 -2，要使用護身嗎？");
   assert.equal(asked.prompt.card, "shield");
-  assert.equal(asked.game.ratings[shield.ids[1]], -2);
+  assert.equal(asked.prompt.text.includes("小魚"), false);
+  assert.equal(asked.game.ratings[shield.ids[1]], undefined);
+  assert.deepEqual(asked.game.ratingFeed, [{ value: -2, nickname: null, profile: null }]);
   assert.equal(serialize(shield.room, shield.ids[1]).prompt, null);
   assert.equal(serialize(shield.room, shield.ids[2]).game.ratings[shield.ids[1]], undefined);
+  assert.equal(serialize(shield.room, shield.ids[2]).game.ratingFeed.length, 0);
   assert.equal(serialize(shield.room, shield.ids[1]).game.ratings[shield.ids[1]], -2);
   assert.equal(applyAction(shield.room, shield.ids[0], { name: "cardDecline" }).ok, true);
   assert.deepEqual(shield.room.cards.hands[shield.ids[0]], ["shield", "swap", "steal", "mode", "next"]);
@@ -1109,7 +1162,7 @@ function testPrompts() {
   cueLive(gated.room, gated.ids[0]);
   applyAction(gated.room, gated.ids[1], { name: "djRate", value: -1 });
   assert.equal(serialize(gated.room, gated.ids[2]).prompt.card, "block");
-  assert.equal(serialize(gated.room, gated.ids[2]).prompt.text, "小魚給了 -1，要使用擋負分嗎？");
+  assert.equal(serialize(gated.room, gated.ids[2]).prompt.text, "有人給了 -1，要使用擋負分嗎？");
   assert.equal(serialize(gated.room, gated.ids[0]).prompt, null);
   assert.equal(applyAction(gated.room, gated.ids[2], { name: "cardDecline" }).ok, true);
   assert.deepEqual(gated.room.cards.hands[gated.ids[2]], ["block"]);
@@ -1173,7 +1226,8 @@ function testPrompts() {
   const peek = serialize(queued.room, queued.ids[0]).prompt;
   assert.equal(peek.card, "peek");
   assert.equal(peek.targetId, queued.ids[1]);
-  assert.match(peek.text, /小魚/);
+  assert.equal(peek.text, "有人打了分，要偷看嗎？");
+  assert.equal(peek.text.includes("小魚"), false);
   assert.equal(applyAction(queued.room, queued.ids[0], { name: "cardPlay", card: "peek", targetId: peek.targetId }).ok, true);
   assert.equal(serialize(queued.room, queued.ids[0]).cards.peek.value, 2);
   assert.deepEqual(queued.room.cards.hands[queued.ids[0]], ["hide"]);
@@ -1239,6 +1293,8 @@ function testPrompts() {
   assert.equal(app.includes("<CardPrompt"), true);
   assert.equal(djUi.includes("評分的人"), true);
   assert.equal(djUi.includes("`+${value}`"), true);
+  assert.equal(djUi.includes("有人"), true);
+  assert.equal(djUi.includes("ratingFeed"), true);
   assert.equal(cardsUi.includes("使用"), true);
 }
 
@@ -1246,6 +1302,7 @@ try {
   testDecksAndCopy();
   testWatchSync();
   testLogic();
+  testPeekIdentity();
   testPrompts();
   await testServer();
   console.log("smoke ok");

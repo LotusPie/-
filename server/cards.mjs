@@ -666,14 +666,13 @@ export function offerHide(room, playerId) {
 export function offerPeek(room, raterId) {
   const game = room.game;
   if (!game || game.kind !== "dj" || typeof game.ratings?.[raterId] !== "number") return;
-  const name = findPlayer(room, raterId)?.nickname || "旅伴";
   for (const player of room.players) {
     if (player.id === raterId) continue;
     enqueueOffer(room, {
       key: `peek:${game.videoId}:${raterId}`,
       playerId: player.id,
       card: "peek",
-      text: `${name}打了分，要偷看嗎？`,
+      text: "有人打了分，要偷看嗎？",
       play: { targetId: raterId },
     });
   }
@@ -733,7 +732,6 @@ export function offerDouble(room) {
 export function ratingGates(room, raterId, value) {
   const game = room.game;
   if (!game || (value !== -1 && value !== -2)) return [];
-  const name = findPlayer(room, raterId)?.nickname || "旅伴";
   const gates = [];
   if (!(game.blockVideoId && game.blockVideoId === game.videoId)) {
     for (const player of room.players) {
@@ -742,7 +740,7 @@ export function ratingGates(room, raterId, value) {
         key: `block:${game.videoId}:${raterId}`,
         playerId: player.id,
         card: "block",
-        text: `${name}給了 ${value}，要使用擋負分嗎？`,
+        text: `有人給了 ${value}，要使用擋負分嗎？`,
         gateId: `rate:${raterId}`,
         raterId,
       });
@@ -753,7 +751,7 @@ export function ratingGates(room, raterId, value) {
       key: `shield:${game.videoId}:${raterId}`,
       playerId: game.djId,
       card: "shield",
-      text: `${name}給了 ${value}，要使用護身嗎？`,
+      text: `有人給了 ${value}，要使用護身嗎？`,
       gateId: `rate:${raterId}`,
       raterId,
     });

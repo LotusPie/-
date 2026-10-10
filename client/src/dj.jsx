@@ -826,23 +826,19 @@ function ratingMark(value) {
   return "還沒評";
 }
 
-function RatingRows({ room, game }) {
-  const people = room.players.filter((player) => player.id !== game.djId);
-  if (!people.length) return null;
+function RatingRows({ game }) {
+  const rows = game.ratingFeed || [];
+  if (!rows.length) return null;
   return (
     <ul className="person-rows" aria-label="評分的人" aria-live="polite">
-      {people.map((player) => {
-        const value = game.ratings?.[player.id];
-        return (
-          <li key={player.id}>
-            <PersonFace nickname={player.nickname} profile={player.profile} />
-            <span className="who-name">
-              {player.nickname}
-              {` · ${ratingMark(value)}`}
-            </span>
-          </li>
-        );
-      })}
+      {rows.map((row, index) => (
+        <li key={`${row.nickname || "anon"}-${index}`}>
+          {row.nickname ? <PersonFace nickname={row.nickname} profile={row.profile} /> : null}
+          <span className="who-name">
+            {`${row.nickname || "有人"} · ${ratingMark(row.value)}`}
+          </span>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -857,7 +853,7 @@ function Live({ room, youId, act, mine }) {
     <section className="stack">
       {showCount ? <p className="song-count">第 {game.songCount || 1} / {limit} 首</p> : null}
       <Constraint index={game.reel} />
-      <RatingRows room={room} game={game} />
+      <RatingRows game={game} />
       <NowPlaying song={game.song} />
       <p className="turn-line">大家一起看這支影片</p>
       {mine ? (
