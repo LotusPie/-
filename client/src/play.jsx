@@ -210,7 +210,10 @@ export function PageSwitch({ page, onChange, dev = false }) {
 export function CardPrompt({ room, act }) {
   const prompt = room?.prompt;
   if (!prompt) return null;
-  const name = room.cards?.shop?.find((card) => card.id === prompt.card)?.name || "";
+  const name =
+    room.cards?.shop?.find((card) => card.id === prompt.card)?.name ||
+    room.cards?.functionShop?.find((card) => card.id === prompt.card)?.name ||
+    "";
   return (
     <div className="card-sheet" role="dialog" aria-label={name || "卡牌"}>
       <CardFace id={prompt.card} name={name} />

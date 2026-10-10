@@ -4,6 +4,48 @@
   gap: 18px;
 }
 
+.function-board {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.function-board h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.function-board ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.function-board li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border-radius: 18px;
+  padding: 10px 12px;
+}
+
+.function-board li > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.function-board button {
+  flex: 0 0 auto;
+  min-height: 48px;
+}
+
 .deck-block {
   display: flex;
   flex-direction: column;

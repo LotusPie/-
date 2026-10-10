@@ -1,6 +1,6 @@
 import { promptDeck, vibeDeck, scoreDeck } from "./decks.mjs";
 import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction, releaseRating, syncPrompts } from "./dj.mjs";
-import { buyCard, clearRoundCards, declinePrompt, forgetPlayer, hiddenFrom, initCards, offerHide, playCard, presentCards, promptFor, scoreHideUntil, songLimit, spinDraw, takeDraw, takeUsedPrompt } from "./cards.mjs";
+import { buyCard, catchEffect, clearRoundCards, declinePrompt, forgetPlayer, hiddenFrom, initCards, offerHide, playCard, presentCards, promptFor, redeemVoucher, scoreHideUntil, songLimit, spinDraw, takeDraw, takeUsedPrompt } from "./cards.mjs";
 
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
@@ -659,6 +659,8 @@ export function applyAction(room, playerId, msg) {
   if (name === "start") return start(room, msg.game);
   if (name === "lobby") return lobby(room);
   if (name === "cardBuy") return buyCard(room, playerId, msg.card);
+  if (name === "cardRedeem") return redeemVoucher(room, playerId, msg.card);
+  if (name === "cardCatch") return catchEffect(room, playerId, msg.targetId, msg.card);
   if (name === "cardSpin") return spinDraw(room, playerId);
   if (name === "cardSpinTake") return takeDraw(room, playerId);
   if (name === "profileSave") return saveProfile(room, playerId, msg);

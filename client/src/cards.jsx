@@ -63,6 +63,17 @@ const CARD_COPY = {
     short: "把迪爵讓給下一個人",
     detail: "若現在輪到你、歌還沒開始，位子立刻讓給下一個人。若還沒輪到你，下次輪到你時跳過。這是用一張牌。",
   },
+  mute: { detail: "對方十分鐘內不能說話。時間可以疊加。大家看得到是誰、還剩多久。抓到了要兩位旅伴先後按下。" },
+  seal: { detail: "對方十分鐘內不能說中文。時間可以疊加。大家看得到是誰、還剩多久。" },
+  pronoun: { detail: "對方十分鐘內不能說你、我、他。時間可以疊加。" },
+  question: { detail: "對方十分鐘內只能用問句說話。時間可以疊加。" },
+  three: { detail: "對方十分鐘內，每次開口最多三個字。時間可以疊加。" },
+  laugh: { detail: "對方十分鐘內不能笑。時間可以疊加。" },
+  agree: { detail: "對方十分鐘內不能說好、對、是、嗯。時間可以疊加。" },
+  lyric: { detail: "對方十分鐘內要用一句歌詞回答。時間可以疊加。" },
+  echo: { detail: "對方十分鐘內要先重複對方最後幾個字，再回答。時間可以疊加。" },
+  call: { detail: "對方十分鐘內，每句話開頭要先說一位旅伴的名字。時間可以疊加。" },
+  whisper: { detail: "對方十分鐘內只能用要湊近才聽得到的音量。時間可以疊加。" },
 };
 
 
@@ -144,7 +155,7 @@ function DrawWheel({ draw, act, error, handFull }) {
       <div className="draw-wheel-wrap">
         <div className="draw-pointer" aria-hidden="true" />
         <div className="draw-wheel" style={{ transform: "rotate(" + angle + "deg)", background: wheelBackground(slices) }}>
-          {slices.filter((slice) => slice.weight >= 8).map((slice) => {
+          {slices.filter((slice) => slice.weight / (slices.reduce((sum, item) => sum + item.weight, 0) || 1) >= 0.08).map((slice) => {
             const mid = sliceMid(slices, slice.id);
             const rad = (mid * Math.PI) / 180;
             const left = 50 + Math.sin(rad) * 32;
@@ -181,14 +192,64 @@ function DrawWheel({ draw, act, error, handFull }) {
   );
 }
 
+export function FunctionBoard({ room, youId, act }) {
+  const [now, setNow] = useState(() => Date.now());
+  const effects = room?.cards?.effects || [];
+  useEffect(() => {
+    if (!effects.length) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [effects.length]);
+  if (!effects.length) return null;
+  return (
+    <section className="function-board" aria-label="功能牌">
+      <h2>正在生效</h2>
+      <ul>
+        {effects.map((effect) => {
+          const remain = effect.until - now;
+          const mine = effect.playerId === youId;
+          const waiting = effect.firstId && !effect.settled;
+          const iAmFirst = effect.firstId === youId;
+          return (
+            <li key={`${effect.playerId}-${effect.card}`}>
+              <PersonFace nickname={effect.nickname} profile={playerOf(room, effect.playerId)?.profile} />
+              <span>
+                <strong className="who-name">{effect.nickname}</strong>
+                <span className="person-sub">
+                  {effect.name} · {effect.rule} · 還有 {remainText(remain)}
+                </span>
+                {effect.settled ? <span className="person-sub">這一回已經算過了</span> : null}
+                {waiting ? (
+                  <span className="person-sub">{effect.firstName || "有人"}先按了，再一個人按下就結算</span>
+                ) : null}
+              </span>
+              {!mine && !effect.settled && !iAmFirst ? (
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() => act({ name: "cardCatch", card: effect.card, targetId: effect.playerId })}
+                >
+                  抓到了
+                </button>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 export function CardDesk({ room, youId, act, error }) {
   const cards = room.cards;
   const [pending, setPending] = useState(null);
   const [detailId, setDetailId] = useState(null);
   if (!cards) return null;
   const shop = cards.shop || [];
+  const functionShop = cards.functionShop || [];
   const hand = cards.hand || [];
-  const specOf = (id) => shop.find((card) => card.id === id);
+  const functionHand = cards.functionHand || [];
+  const specOf = (id) => shop.find((card) => card.id === id) || functionShop.find((card) => card.id === id);
   const active = cards.active || {};
   const notes = [];
   if (active.shield) notes.push("護身：負分不會加到這輪迪爵");
@@ -220,15 +281,15 @@ export function CardDesk({ room, youId, act, error }) {
     <section className="card-desk">
       <section className="deck-block">
         <header className="deck-head">
-          <h2>抽一張</h2>
+          <h2>普通牌</h2>
           <p>進房先抽三次</p>
         </header>
         <DrawWheel draw={cards.draw} act={act} error={error} handFull={hand.length >= 5} />
       </section>
       <section className="deck-block">
         <header className="deck-head">
-          <h2>目前的手牌</h2>
-          <p>{hand.length} 張</p>
+          <h2>普通牌</h2>
+          <p>{hand.length} / 5 張</p>
         </header>
         {hand.length ? (
           <div className="collect-grid">
@@ -319,12 +380,97 @@ export function CardDesk({ room, youId, act, error }) {
       ) : null}
       <section className="deck-block">
         <header className="deck-head">
-          <h2>牌店</h2>
+          <h2>功能牌</h2>
+          <p>{functionHand.length} 張 · 沒有張數上限</p>
+        </header>
+        {cards.vouchers > 0 ? (
+          <div className="card-picks">
+            <p className="hint">你有 {cards.vouchers} 張兌換券。選一張功能牌，券就用掉。</p>
+            {functionShop.map((card) => (
+              <button key={card.id} className="secondary" type="button" onClick={() => act({ name: "cardRedeem", card: card.id })}>
+                {card.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {functionHand.length ? (
+          <div className="collect-grid">
+            {functionHand.map((id, index) => {
+              const spec = specOf(id);
+              const selected = pending === id && index === functionHand.indexOf(id);
+              return (
+                <article className={selected ? "collect-card is-on" : "collect-card"} key={`fn-${id}-${index}`}>
+                  <CardFace id={id} name={spec?.name || id} />
+                  <div className="collect-actions">
+                    {selected ? (
+                      <button className="texty" type="button" onClick={() => setPending(null)}>
+                        收起
+                      </button>
+                    ) : (
+                      <button className="primary" type="button" onClick={() => choose(id)}>
+                        使用
+                      </button>
+                    )}
+                  </div>
+                  {selected ? (
+                    <div className="card-picks">
+                      {others.map((player) => (
+                        <button
+                          key={player.id}
+                          className="person-pick"
+                          type="button"
+                          onClick={() => play(pending, { targetId: player.id })}
+                        >
+                          <PersonFace nickname={player.nickname} profile={player.profile} />
+                          <span className="who-name">{player.nickname}</span>
+                        </button>
+                      ))}
+                      {others.length === 0 ? <p className="hint">現在沒有別的旅伴。</p> : null}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="collect-empty hint">還沒有功能牌。可以用 10 分買，或用轉盤的兌換券換一張。</p>
+        )}
+      </section>
+      <section className="deck-block">
+        <header className="deck-head">
+          <h2>普通牌</h2>
           <p>用分數換一張</p>
         </header>
         <div className="collect-grid">
           {shop.map((card) => {
             const copy = CARD_COPY[card.id] || { detail: card.name };
+            const open = detailId === card.id;
+            return (
+              <article className={open ? "collect-card shop-card is-open" : "collect-card shop-card"} key={card.id}>
+                <CardFace id={card.id} name={card.name} />
+                <div className="collect-actions">
+                  <button className="texty" type="button" onClick={() => setDetailId(open ? null : card.id)}>
+                    {open ? "收起" : "看詳細"}
+                  </button>
+                  <span className="collect-mark">{card.cost} 分</span>
+                  <button className="secondary" type="button" onClick={() => act({ name: "cardBuy", card: card.id })}>
+                    買下
+                  </button>
+                </div>
+                {open ? <p className="card-detail">{copy.detail}</p> : null}
+              </article>
+            );
+          })}
+        </div>
+      </section>
+      <section className="deck-block">
+        <header className="deck-head">
+          <h2>功能牌</h2>
+          <p>一張 10 分</p>
+        </header>
+        <div className="collect-grid">
+          {functionShop.map((card) => {
+            const copy = CARD_COPY[card.id] || { detail: card.rule };
             const open = detailId === card.id;
             return (
               <article className={open ? "collect-card shop-card is-open" : "collect-card shop-card"} key={card.id}>

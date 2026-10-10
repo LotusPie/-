@@ -16,6 +16,17 @@ const CARD_ACCENTS = {
   extra: "#9c3d5c",
   next: "#1f6484",
   pass: "#6a4636",
+  mute: "#7f2f24",
+  seal: "#1a655c",
+  pronoun: "#3a3f78",
+  question: "#1f6484",
+  three: "#8a5a12",
+  laugh: "#a61d4d",
+  agree: "#2e6834",
+  lyric: "#2f4f86",
+  echo: "#6a4636",
+  call: "#9c3d5c",
+  whisper: "#5e3458",
 };
 
 function cardAccent(id) {

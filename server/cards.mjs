@@ -1,6 +1,8 @@
 export const HAND_MAX = 5;
 export const DRAW_EVERY_MS = 3 * 60 * 1000;
 export const HIDE_MS = 2 * 60 * 60 * 1000;
+export const FUNCTION_MS = 10 * 60 * 1000;
+export const FUNCTION_COST = 10;
 
 export const CARD_LIST = [
   { id: "hide", name: "隱藏兩小時", cost: 3, needs: "" },
@@ -18,6 +20,22 @@ export const CARD_LIST = [
 ];
 
 const CARD_IDS = new Set(CARD_LIST.map((card) => card.id));
+
+export const FUNCTION_LIST = [
+  { id: "mute", name: "禁言", rule: "不能說話" },
+  { id: "seal", name: "中文封印", rule: "不能說中文" },
+  { id: "pronoun", name: "你我他", rule: "不能說你、我、他" },
+  { id: "question", name: "問句", rule: "只能用問句說話" },
+  { id: "three", name: "三個字", rule: "每次最多說三個字" },
+  { id: "laugh", name: "禁笑", rule: "不能笑" },
+  { id: "agree", name: "禁好", rule: "不能說好、對、是、嗯" },
+  { id: "lyric", name: "接歌", rule: "要用一句歌詞回答" },
+  { id: "echo", name: "複讀", rule: "要先重複對方最後幾個字，再回答" },
+  { id: "call", name: "指名", rule: "每句話開頭要先說一位旅伴的名字" },
+  { id: "whisper", name: "悄悄話", rule: "只能用要湊近才聽得到的音量" },
+];
+
+const FUNCTION_IDS = new Set(FUNCTION_LIST.map((card) => card.id));
 
 export const DRAW_SPIN_MS = 30 * 60 * 1000;
 
@@ -45,8 +63,9 @@ function drawTable() {
       missing.push(id);
       continue;
     }
-    slices.push({ id, name: spec.name, weight });
+    slices.push({ id, name: spec.name, weight: weight * 99 });
   }
+  slices.push({ id: "voucher", name: "兌換券", weight: 100 });
   return { slices, missing };
 }
 
@@ -104,6 +123,16 @@ export function takeDraw(room, playerId, now = Date.now()) {
   ensureSpin(cards);
   const pending = cards.pendingDraw[playerId];
   if (!pending) return { ok: true };
+  if (pending.card === "voucher") {
+    if (!cards.vouchers) cards.vouchers = {};
+    cards.vouchers[playerId] = (cards.vouchers[playerId] || 0) + 1;
+    delete cards.pendingDraw[playerId];
+    const voucherLeft = spinsLeftOf(cards, playerId);
+    if (voucherLeft > 0) cards.spinsLeft[playerId] = voucherLeft - 1;
+    if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + DRAW_SPIN_MS;
+    cards.lastSpin[playerId] = { card: "voucher", at: now };
+    return { ok: true, card: "voucher" };
+  }
   const hand = handOf(room, playerId);
   if (hand.length >= HAND_MAX) return { error: "手牌滿了，先用掉一張。" };
   hand.push(pending.card);
@@ -152,11 +181,18 @@ export function initCards(now = Date.now()) {
     offers: [],
     declined: {},
     offerSeq: 0,
+    functions: {},
+    vouchers: {},
+    effects: {},
   };
 }
 
 function specOf(id) {
   return CARD_LIST.find((card) => card.id === id) || null;
+}
+
+function functionSpec(id) {
+  return FUNCTION_LIST.find((card) => card.id === id) || null;
 }
 
 function findPlayer(room, id) {
@@ -172,6 +208,12 @@ function connectedPlayer(room, id) {
 function handOf(room, playerId) {
   if (!room.cards.hands[playerId]) room.cards.hands[playerId] = [];
   return room.cards.hands[playerId];
+}
+
+function functionHandOf(room, playerId) {
+  if (!room.cards.functions) room.cards.functions = {};
+  if (!room.cards.functions[playerId]) room.cards.functions[playerId] = [];
+  return room.cards.functions[playerId];
 }
 
 function randomCardId() {
@@ -194,6 +236,16 @@ export function tickCardDraws(room, now = Date.now()) {
 export function buyCard(room, playerId, cardId) {
   const player = findPlayer(room, playerId);
   if (!player) return { error: "你不在這個房間。" };
+  const fn = functionSpec(cardId);
+  if (fn) {
+    if (player.score < FUNCTION_COST) return { error: "分數不夠，不能買。" };
+    const before = player.score;
+    player.score -= FUNCTION_COST;
+    functionHandOf(room, playerId).push(fn.id);
+    if (player.score !== before) offerHide(room, playerId);
+    offerFunctions(room, playerId);
+    return { ok: true };
+  }
   const spec = specOf(cardId);
   if (!spec || !CARD_IDS.has(cardId)) return { error: "沒有這張牌。" };
   if (player.score < 0) return { error: "分數是負的，不能買。" };
@@ -324,9 +376,76 @@ function applyCard(room, playerId, cardId, msg) {
   return { error: "沒有這張牌。" };
 }
 
+function applyFunction(room, playerId, cardId, msg, now = Date.now()) {
+  const picked = otherOnline(room, playerId, msg?.targetId);
+  if (picked.error) return picked;
+  if (!room.cards.effects) room.cards.effects = {};
+  if (!room.cards.effects[picked.player.id]) room.cards.effects[picked.player.id] = {};
+  const current = room.cards.effects[picked.player.id][cardId];
+  const active = current && current.until > now ? current : null;
+  room.cards.effects[picked.player.id][cardId] = {
+    until: (active ? active.until : now) + FUNCTION_MS,
+    settled: active ? Boolean(active.settled) : false,
+    firstId: active ? active.firstId || null : null,
+  };
+  return { ok: true };
+}
+
+export function redeemVoucher(room, playerId, cardId) {
+  const player = findPlayer(room, playerId);
+  if (!player) return { error: "你不在這個房間。" };
+  const fn = functionSpec(cardId);
+  if (!fn) return { error: "沒有這張牌。" };
+  const count = room.cards?.vouchers?.[playerId] || 0;
+  if (count < 1) return { error: "沒有兌換券。" };
+  room.cards.vouchers[playerId] = count - 1;
+  if (room.cards.vouchers[playerId] <= 0) delete room.cards.vouchers[playerId];
+  functionHandOf(room, playerId).push(fn.id);
+  offerFunctions(room, playerId);
+  return { ok: true };
+}
+
+export function catchEffect(room, playerId, targetId, cardId, now = Date.now()) {
+  if (!functionSpec(cardId)) return { error: "沒有這張牌。" };
+  if (playerId === targetId) return { error: "被點到的人不能按。" };
+  const player = connectedPlayer(room, playerId);
+  if (!player) return { error: "你不在這個房間。" };
+  const target = findPlayer(room, targetId);
+  if (!target) return { error: "請選一位旅伴。" };
+  const state = room.cards?.effects?.[targetId]?.[cardId];
+  if (!state || state.until <= now) return { error: "這個規則已經結束。" };
+  if (state.settled) return { error: "這一回已經算過了。" };
+  if (!state.firstId) {
+    state.firstId = playerId;
+    return { ok: true };
+  }
+  if (state.firstId === playerId) return { error: "你已經按過了。" };
+  const first = findPlayer(room, state.firstId);
+  const beforeTarget = target.score;
+  const beforePlayer = player.score;
+  const beforeFirst = first?.score;
+  target.score -= 1;
+  player.score += 1;
+  if (first && first.id !== player.id) first.score += 1;
+  state.settled = true;
+  if (target.score !== beforeTarget) offerHide(room, target.id);
+  if (player.score !== beforePlayer) offerHide(room, player.id);
+  if (first && first.score !== beforeFirst) offerHide(room, first.id);
+  return { ok: true };
+}
+
 export function playCard(room, playerId, msg) {
   if (!findPlayer(room, playerId)) return { error: "你不在這個房間。" };
   const cardId = msg?.card;
+  if (functionSpec(cardId)) {
+    const owned = functionHandOf(room, playerId);
+    const index = owned.indexOf(cardId);
+    if (index === -1) return { error: "你沒有這張牌。" };
+    const result = applyFunction(room, playerId, cardId, msg || {});
+    if (result?.error) return result;
+    owned.splice(index, 1);
+    return { ok: true };
+  }
   if (!specOf(cardId)) return { error: "沒有這張牌。" };
   const hand = room.cards.hands[playerId] || [];
   const index = hand.indexOf(cardId);
@@ -426,6 +545,16 @@ export function forgetPlayer(room, playerId) {
   if (cards.wheelSpin) delete cards.wheelSpin[playerId];
   if (cards.offers) cards.offers = cards.offers.filter((offer) => offer.playerId !== playerId);
   if (cards.declined) delete cards.declined[playerId];
+  if (cards.functions) delete cards.functions[playerId];
+  if (cards.vouchers) delete cards.vouchers[playerId];
+  if (cards.effects) {
+    delete cards.effects[playerId];
+    for (const effects of Object.values(cards.effects)) {
+      for (const state of Object.values(effects)) {
+        if (state.firstId === playerId) state.firstId = null;
+      }
+    }
+  }
 }
 
 export function presentCards(room, viewerId) {
@@ -436,7 +565,18 @@ export function presentCards(room, viewerId) {
   const doubled = Boolean(game?.doubles?.[viewerId] && game.doubles[viewerId] === game.videoId);
   return {
     hand: [...(cards?.hands?.[viewerId] || [])],
-    shop: CARD_LIST.map(({ id, name, cost, needs }) => ({ id, name, cost, needs })),
+    shop: CARD_LIST.map(({ id, name, cost, needs }) => ({ id, name, cost, needs, kind: "normal" })),
+    functionHand: [...(cards?.functions?.[viewerId] || [])],
+    functionShop: FUNCTION_LIST.map(({ id, name, rule }) => ({
+      id,
+      name,
+      rule,
+      cost: FUNCTION_COST,
+      needs: "other",
+      kind: "function",
+    })),
+    vouchers: cards?.vouchers?.[viewerId] || 0,
+    effects: presentEffects(room),
     peek: peek
       ? {
           nickname: peekPlayer?.nickname || "旅伴",
@@ -549,7 +689,66 @@ function ensureOffers(room) {
 }
 
 function holds(room, playerId, cardId) {
+  if (FUNCTION_IDS.has(cardId)) return (room.cards?.functions?.[playerId] || []).includes(cardId);
   return (room.cards?.hands?.[playerId] || []).includes(cardId);
+}
+
+function presentEffects(room, now = Date.now()) {
+  const rows = [];
+  for (const [targetId, effects] of Object.entries(room.cards?.effects || {})) {
+    const target = findPlayer(room, targetId);
+    for (const [cardId, state] of Object.entries(effects)) {
+      if (!state || state.until <= now) continue;
+      const spec = functionSpec(cardId);
+      const first = state.firstId ? findPlayer(room, state.firstId) : null;
+      rows.push({
+        playerId: targetId,
+        nickname: target?.nickname || "旅伴",
+        card: cardId,
+        name: spec?.name || cardId,
+        rule: spec?.rule || "",
+        until: state.until,
+        settled: Boolean(state.settled),
+        firstId: state.firstId || null,
+        firstName: first?.nickname || "",
+      });
+    }
+  }
+  return rows;
+}
+
+export function tickFunctionEffects(room, now = Date.now()) {
+  const map = room.cards?.effects;
+  if (!map) return false;
+  let changed = false;
+  for (const [targetId, effects] of Object.entries(map)) {
+    for (const [cardId, state] of Object.entries(effects)) {
+      if (!state || state.until <= now) {
+        delete effects[cardId];
+        changed = true;
+      }
+    }
+    if (!Object.keys(effects).length) delete map[targetId];
+  }
+  return changed;
+}
+
+export function offerFunctions(room, playerId) {
+  const owned = [...new Set(room.cards?.functions?.[playerId] || [])];
+  for (const cardId of owned) {
+    const spec = functionSpec(cardId);
+    if (!spec) continue;
+    for (const player of room.players) {
+      if (player.id === playerId || !player.connected) continue;
+      enqueueOffer(room, {
+        key: `fn:${cardId}:${player.id}`,
+        playerId,
+        card: cardId,
+        text: `要對${player.nickname}使用${spec.name}嗎？`,
+        play: { targetId: player.id },
+      });
+    }
+  }
 }
 
 function songStopLabel(songs) {
@@ -610,6 +809,9 @@ function stillUseful(room, offer) {
         game.pendingRatings?.[offer.playerId] == null &&
         game.doubles?.[offer.playerId] !== game.videoId,
     );
+  }
+  if (FUNCTION_IDS.has(offer.card)) {
+    return Boolean(connectedPlayer(room, offer.play?.targetId));
   }
   return false;
 }

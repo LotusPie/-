@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { promptDeck, vibeDeck, scoreDeck } from "../server/decks.mjs";
 import { expireDj, parseYoutubeVideoId, REEL_ITEMS } from "../server/dj.mjs";
-import { HIDE_MS, tickCardDraws, tickScoreHides } from "../server/cards.mjs";
+import { FUNCTION_MS, HIDE_MS, tickCardDraws, tickFunctionEffects, tickScoreHides } from "../server/cards.mjs";
 import { handleDev } from "../server/dev.mjs";
 import { expectedPlayhead, planFollow } from "../client/src/watch-sync.js";
 import {
@@ -1302,12 +1302,104 @@ function testPrompts() {
   assert.equal(cardsUi.includes("使用"), true);
 }
 
+function testFunctionCards() {
+  const made = freshRoom(["阿凱", "小魚", "阿德"]);
+  const { room } = made;
+  const [a, b, c] = made.ids;
+  const slices = serialize(room, a).cards.draw.slices;
+  const total = slices.reduce((sum, slice) => sum + slice.weight, 0);
+  const voucher = slices.find((slice) => slice.id === "voucher");
+  assert.equal(voucher.name, "兌換券");
+  assert.equal(voucher.weight / total, 0.01);
+  assert.equal((total - voucher.weight) / total, 0.99);
+  const peek = slices.find((slice) => slice.id === "peek");
+  const swap = slices.find((slice) => slice.id === "swap");
+  assert.equal(peek.weight / swap.weight, 14 / 2);
+  assert.equal(slices.some((slice) => slice.id === "mute"), false);
+
+  const buyer = room.players.find((player) => player.id === a);
+  buyer.score = 9;
+  assert.match(applyAction(room, a, { name: "cardBuy", card: "mute" }).error, /不能買/);
+  assert.equal(scoreOf(room, a), 9);
+  assert.equal(room.cards.functions?.[a], undefined);
+  buyer.score = 10;
+  assert.equal(applyAction(room, a, { name: "cardBuy", card: "mute" }).ok, true);
+  assert.equal(scoreOf(room, a), 0);
+  assert.deepEqual(room.cards.functions[a], ["mute"]);
+  assert.deepEqual(room.cards.hands[a] || [], []);
+  const asked = serialize(room, a);
+  assert.equal(asked.prompt.card, "mute");
+  assert.equal(asked.prompt.targetId, b);
+  assert.equal(asked.prompt.text, "要對小魚使用禁言嗎？");
+  assert.equal(applyAction(room, a, { name: "cardDecline" }).ok, true);
+  assert.deepEqual(room.cards.functions[a], ["mute"]);
+
+  const started = Date.now();
+  assert.equal(applyAction(room, a, { name: "cardPlay", card: "mute", targetId: b }).ok, true);
+  const until = room.cards.effects[b].mute.until;
+  assert.ok(until >= started + FUNCTION_MS - 20 && until <= started + FUNCTION_MS + 2000);
+  assert.deepEqual(room.cards.functions[a], []);
+  room.cards.functions[a] = ["mute", "seal"];
+  assert.equal(applyAction(room, a, { name: "cardPlay", card: "mute", targetId: b }).ok, true);
+  assert.equal(room.cards.effects[b].mute.until, until + FUNCTION_MS);
+  assert.equal(applyAction(room, a, { name: "cardPlay", card: "seal", targetId: b }).ok, true);
+  const shown = serialize(room, c).cards.effects.filter((row) => row.playerId === b);
+  assert.deepEqual(shown.map((row) => row.name).sort(), ["中文封印", "禁言"]);
+  assert.ok(shown.every((row) => row.nickname === "小魚" && row.rule && row.until > started));
+
+  assert.match(applyAction(room, b, { name: "cardCatch", card: "mute", targetId: b }).error, /不能按/);
+  assert.equal(applyAction(room, a, { name: "cardCatch", card: "mute", targetId: b }).ok, true);
+  assert.equal(scoreOf(room, b), 0);
+  assert.equal(room.cards.effects[b].mute.settled, false);
+  assert.match(applyAction(room, a, { name: "cardCatch", card: "mute", targetId: b }).error, /按過了/);
+  assert.equal(applyAction(room, c, { name: "cardCatch", card: "mute", targetId: b }).ok, true);
+  assert.equal(scoreOf(room, b), -1);
+  assert.equal(scoreOf(room, a), 1);
+  assert.equal(scoreOf(room, c), 1);
+  assert.equal(room.cards.effects[b].mute.settled, true);
+  assert.match(applyAction(room, a, { name: "cardCatch", card: "mute", targetId: b }).error, /算過了/);
+
+  room.cards.hands[a] = ["hide", "peek", "steal", "shield", "block"];
+  buyer.score = 10;
+  assert.equal(applyAction(room, a, { name: "cardBuy", card: "laugh" }).ok, true);
+  assert.equal(room.cards.hands[a].length, 5);
+  assert.ok(room.cards.functions[a].includes("laugh"));
+  room.cards.hands[a] = [];
+  const random = Math.random;
+  Math.random = () => 0.999999;
+  try {
+    assert.equal(applyAction(room, a, { name: "cardSpin" }).ok, true);
+  } finally {
+    Math.random = random;
+  }
+  assert.equal(room.cards.pendingDraw[a].card, "voucher");
+  assert.equal(applyAction(room, a, { name: "cardSpinTake" }).ok, true);
+  assert.equal(serialize(room, a).cards.vouchers, 1);
+  assert.equal((room.cards.hands[a] || []).includes("voucher"), false);
+  assert.equal(applyAction(room, a, { name: "cardRedeem", card: "whisper" }).ok, true);
+  assert.equal(serialize(room, a).cards.vouchers, 0);
+  assert.ok(room.cards.functions[a].includes("whisper"));
+  assert.match(applyAction(room, a, { name: "cardRedeem", card: "whisper" }).error, /兌換券/);
+
+  room.cards.effects[b].seal.until = Date.now() - 1;
+  assert.equal(tickFunctionEffects(room), true);
+  assert.equal(room.cards.effects[b].seal, undefined);
+  assert.ok(room.cards.effects[b].mute);
+
+  const cardsUi = fs.readFileSync(path.join(root, "client/src/cards.jsx"), "utf8");
+  assert.equal(cardsUi.includes("功能牌"), true);
+  assert.equal(cardsUi.includes("抓到了"), true);
+  assert.equal(cardsUi.includes("兌換券"), true);
+  assert.equal(cardsUi.includes("普通牌"), true);
+}
+
 try {
   testDecksAndCopy();
   testWatchSync();
   testLogic();
   testPeekIdentity();
   testPrompts();
+  testFunctionCards();
   await testServer();
   console.log("smoke ok");
 } catch (error) {

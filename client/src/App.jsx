@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
 import { DjGame } from "./dj.jsx";
-import { CardDesk } from "./cards.jsx";
+import { CardDesk, FunctionBoard } from "./cards.jsx";
 import { DevPanel } from "./dev.jsx";
 import { CardPrompt, Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
 import { ProfilePage } from "./profile.jsx";
@@ -142,6 +142,7 @@ export default function App() {
         </p>
       )}
 
+      {room ? <FunctionBoard room={room} youId={youId} act={act} /> : null}
       <div
         className={onPlay ? "play-stage" : "play-stage is-parked"}
         aria-hidden={onPlay ? undefined : true}
