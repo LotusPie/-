@@ -66,7 +66,6 @@ export default function App() {
   const [nickname, setNickname] = useState(() => loadSession()?.nickname || "");
   const [linkCode] = useState(() => roomCodeFromLocation());
   const [code, setCode] = useState(linkCode);
-  const invited = !room && linkCode && code === linkCode ? linkCode : "";
   const [toast, setToast] = useState("");
   const [page, setPage] = useState(() => readLocalPage(devEnabledNow()));
 
@@ -160,7 +159,6 @@ export default function App() {
             onJoin={join}
             error={error}
             pending={pending}
-            invited={invited}
           />
         )}
         {room ? <RoleBoard room={room} youId={youId} act={act} /> : null}

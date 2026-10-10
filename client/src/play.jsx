@@ -49,24 +49,9 @@ export function Home({
   onJoin,
   error,
   pending,
-  invited,
 }) {
   return (
     <div className="home stack">
-      <section className="ticket">
-        <div className="ticket-top">
-          <span className="stamp">私人牌局</span>
-        </div>
-        <p className="lede">
-          朋友一起在路上玩。輪流當迪爵，大家看同一支影片。沒有帳號，房間只有拿到代碼的人進得來。
-        </p>
-      </section>
-
-      {invited && (
-        <p className="invite">
-          朋友把房間 <strong>{invited}</strong> 留給你了。取個暱稱就能進來。
-        </p>
-      )}
       {error && (
         <p className="banner" role="alert">
           {error}

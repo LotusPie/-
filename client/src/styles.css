@@ -148,7 +148,6 @@ h1 {
   flex: 1;
 }
 
-.ticket,
 .panel,
 .play-card {
   background: var(--card);
@@ -156,61 +155,13 @@ h1 {
   box-shadow: var(--shadow);
 }
 
-.ticket {
-  position: relative;
-  padding: 22px 20px 18px;
-}
-
-.ticket::before,
-.ticket::after {
-  content: "";
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--paper);
-  top: 54px;
-}
-
-.ticket::before {
-  left: -11px;
-}
-
-.ticket::after {
-  right: -11px;
-}
-
-.ticket-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.lede,
 .hint,
-.invite,
 .turn-line {
   overflow-wrap: anywhere;
 }
 
-.lede,
-.hint,
-.invite {
+.hint {
   color: var(--ink-soft);
-}
-
-.lede {
-  font-size: 1.05rem;
-}
-
-.invite {
-  font-weight: 700;
-}
-
-.invite strong {
-  letter-spacing: 0.12em;
-  color: var(--ink);
 }
 
 .panel {
@@ -994,7 +945,6 @@ footer p {
 
 .dj-play,
 .panel,
-.ticket,
 .song-hero {
   min-width: 0;
   max-width: 100%;
@@ -1090,14 +1040,8 @@ footer p {
     align-items: start;
   }
 
-  .home > .ticket,
-  .home > .invite,
   .home > .banner {
     grid-column: 1 / -1;
-  }
-
-  .lede {
-    max-width: 38rem;
   }
 
   .wheel-wrap,
