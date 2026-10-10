@@ -160,13 +160,13 @@ export function useRoom() {
     error,
     setError,
     status,
-    create(nickname, profession) {
+    create(nickname) {
       setError("");
-      send({ type: "create", nickname, profession });
+      send({ type: "create", nickname });
     },
-    join(nickname, code, profession) {
+    join(nickname, code) {
       setError("");
-      send({ type: "join", nickname, code, profession });
+      send({ type: "join", nickname, code });
     },
     leave() {
       stoppedRef.current = true;

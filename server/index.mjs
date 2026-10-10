@@ -192,7 +192,7 @@ wss.on("connection", (ws) => {
 
 function handle(ws, msg) {
   if (msg.type === "create") {
-    const created = createPlayerRoom(msg.nickname, msg.profession);
+    const created = createPlayerRoom(msg.nickname);
     if (created.error) {
       send(ws, { type: "error", message: created.error });
       return;
@@ -219,7 +219,7 @@ function handle(ws, msg) {
       });
       return;
     }
-    const joined = joinRoom(room, { nickname: msg.nickname, playerId: msg.playerId, profession: msg.profession });
+    const joined = joinRoom(room, { nickname: msg.nickname, playerId: msg.playerId });
     if (joined.error) {
       send(ws, { type: "error", message: joined.error });
       return;

@@ -184,13 +184,7 @@ function DrawWheel({ draw, act, error, handFull }) {
       {spinning && !won ? <p className="draw-result">轉盤轉著</p> : null}
       {won ? <p className="draw-result">抽到 {won.name}</p> : null}
       {!spinning && !won ? <p className="draw-wait">按轉一下，看轉盤停在哪一張。</p> : null}
-      {spinsLeft > 0 ? (
-        <p className="draw-wait">還可以抽 {spinsLeft} 次</p>
-      ) : (
-        <p className="draw-wait">
-          {draw?.cooldownMs === 20 * 60 * 1000 ? "這次用完才會再算 20 分鐘" : "這次用完才會再算半小時"}
-        </p>
-      )}
+      {spinsLeft > 0 ? <p className="draw-wait">還可以抽 {spinsLeft} 次</p> : <p className="draw-wait">這次用完才會再算半小時</p>}
       {cooling ? <p className="draw-cooldown">冷卻 {remainText(wait)}</p> : null}
       {handFull ? <p className="hint">手牌滿了，先用掉一張。</p> : null}
       {error && !spinning ? <p className="hint">{error}</p> : null}
@@ -205,6 +199,7 @@ function DrawWheel({ draw, act, error, handFull }) {
 export function FunctionBoard({ room, youId, act }) {
   const [now, setNow] = useState(() => Date.now());
   const effects = room?.cards?.effects || [];
+  const you = room?.players?.find((player) => player.id === youId);
   useEffect(() => {
     if (!effects.length) return undefined;
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -214,12 +209,16 @@ export function FunctionBoard({ room, youId, act }) {
   return (
     <section className="function-board" aria-label="功能牌">
       <h2>正在生效</h2>
+      {you?.profile?.profession?.id === "bombardiro" && !you.roleSpent ? (
+        <button className="secondary" type="button" onClick={() => act({ name: "roleClear" })}>
+          清掉全部倒數
+        </button>
+      ) : null}
       <ul>
         {effects.map((effect) => {
           const remain = effect.until - now;
           const mine = effect.playerId === youId;
           const waiting = effect.firstId && !effect.settled;
-          const iAmFirst = effect.firstId === youId;
           return (
             <li key={`${effect.playerId}-${effect.card}`}>
               <PersonFace nickname={effect.nickname} profile={playerOf(room, effect.playerId)?.profile} />
@@ -230,16 +229,27 @@ export function FunctionBoard({ room, youId, act }) {
                 </span>
                 {effect.settled ? <span className="person-sub">這一回已經算過了</span> : null}
                 {waiting ? (
-                  <span className="person-sub">{effect.firstName || "有人"}先按了，再一個人按下就結算</span>
+                  <span className="person-sub">
+                    已有 {effect.presses || 1} 人按下，再 {(effect.needed || 2) - (effect.presses || 1)} 人就結算
+                  </span>
                 ) : null}
               </span>
-              {!mine && !effect.settled && !iAmFirst ? (
+              {!mine && !effect.settled && !effect.pressed ? (
                 <button
                   className="secondary"
                   type="button"
                   onClick={() => act({ name: "cardCatch", card: effect.card, targetId: effect.playerId })}
                 >
                   抓到了
+                </button>
+              ) : null}
+              {you?.profile?.profession?.id === "tung" ? (
+                <button
+                  className="texty"
+                  type="button"
+                  onClick={() => act({ name: "roleEnd", card: effect.card, targetId: effect.playerId })}
+                >
+                  提早結束
                 </button>
               ) : null}
             </li>
@@ -292,14 +302,14 @@ export function CardDesk({ room, youId, act, error }) {
       <section className="deck-block">
         <header className="deck-head">
           <h2>普通牌</h2>
-          <p>進房先抽{cards.draw?.freeDraws === 4 ? "四次" : "三次"}</p>
+          <p>進房先抽三次</p>
         </header>
-        <DrawWheel draw={cards.draw} act={act} error={error} handFull={hand.length >= (cards.handMax || 5)} />
+        <DrawWheel draw={cards.draw} act={act} error={error} handFull={hand.length >= 5} />
       </section>
       <section className="deck-block">
         <header className="deck-head">
           <h2>普通牌</h2>
-          <p>{hand.length} / {cards.handMax || 5} 張</p>
+          <p>{hand.length} / 5 張</p>
         </header>
         {hand.length ? (
           <div className="collect-grid">

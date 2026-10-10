@@ -3,6 +3,7 @@ import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
 import { DjGame } from "./dj.jsx";
 import { CardDesk, FunctionBoard } from "./cards.jsx";
 import { DevPanel } from "./dev.jsx";
+import { RoleBoard } from "./professions.jsx";
 import { CardPrompt, Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
 import { ProfilePage } from "./profile.jsx";
 
@@ -26,7 +27,6 @@ async function writeText(text) {
 
 const PAGE_KEY = "on-the-trip-page";
 const DEV_KEY = "on-the-trip-dev";
-const PROF_KEY = "on-the-trip-profession";
 
 function devEnabledNow() {
   try {
@@ -64,26 +64,11 @@ export default function App() {
   const { room, youId, error, setError, status, create, join, leave, act, dev } = useRoom();
   const [devOn] = useState(devEnabledNow);
   const [nickname, setNickname] = useState(() => loadSession()?.nickname || "");
-  const [profession, setProfessionState] = useState(() => {
-    try {
-      return sessionStorage.getItem(PROF_KEY) || "";
-    } catch {
-      return "";
-    }
-  });
-  function setProfession(id) {
-    setProfessionState(id);
-    try {
-      sessionStorage.setItem(PROF_KEY, id);
-    } catch {
-      // the choice still stays on this page until reload
-    }
-  }
   const [linkCode] = useState(() => roomCodeFromLocation());
   const [code, setCode] = useState(linkCode);
+  const invited = !room && linkCode && code === linkCode ? linkCode : "";
   const [toast, setToast] = useState("");
   const [page, setPage] = useState(() => readLocalPage(devEnabledNow()));
-  const invited = !room && linkCode && code === linkCode ? linkCode : "";
 
   useEffect(() => {
     document.title = room ? `房間 ${room.code} · on the trip` : "on the trip";
@@ -171,15 +156,14 @@ export default function App() {
             setNickname={setNickname}
             code={code}
             setCode={setCode}
-            profession={profession}
-            setProfession={setProfession}
-            onCreate={(name) => create(name, profession)}
-            onJoin={(name, roomCode) => join(name, roomCode, profession)}
+            onCreate={create}
+            onJoin={join}
             error={error}
             pending={pending}
             invited={invited}
           />
         )}
+        {room ? <RoleBoard room={room} youId={youId} act={act} /> : null}
         {room?.phase === "lobby" && (
           <Lobby onStart={(game) => act({ name: "start", game })} onLeave={leave} />
         )}

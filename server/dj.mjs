@@ -1,3 +1,4 @@
+import { isProfession, niulaiScore } from "./professions.mjs";
 import {
   clearRoundCards,
   clearSongCards,
@@ -123,6 +124,8 @@ function freshRound(room, game, djId, round) {
     reelSpin: 0,
     extra: false,
     extraSpins: 0,
+    ballerinaSpin: false,
+    tralalaReel: false,
     shield: false,
     blockVideoId: null,
     doubles: {},
@@ -265,7 +268,7 @@ export function syncPrompts(room) {
 function applyRating(room, playerId, value) {
   const game = room.game;
   if (playerId === game.djId) return { error: "迪爵這輪不評自己的歌。" };
-  const allowed = value === -2 || value === -1 || value === 1 || value === 2;
+  const allowed = value === -2 || value === -1 || value === 0 || value === 1 || value === 2;
   if (!allowed) return { error: "沒有這個分數。" };
   if (game.ratings[playerId] != null) return { error: "這首你評過了。" };
   if ((value === -1 || value === -2) && game.blockVideoId && game.blockVideoId === game.videoId) {
@@ -305,7 +308,10 @@ export function handleDjAction(room, playerId, msg) {
     if ((game.wheelSpin || 0) > 0) game.extraSpins -= 1;
     const songs = takeForcedMode(room, game, msg.songs);
     if (songs) game.wheelSongs = songs;
-    else if (msg.songs === 0) game.wheelSongs = 0;
+    else if (msg.songs === 0) {
+      if (isProfession(findPlayer(room, game.djId), "yaju")) return { error: "這輪必須播。" };
+      game.wheelSongs = 0;
+    }
     else return { error: "沒有這個首數。" };
     game.wheelSpin = (game.wheelSpin || 0) + 1;
     offerRespin(room);
@@ -326,7 +332,10 @@ export function handleDjAction(room, playerId, msg) {
       offerExtra(room);
       return { ok: true };
     }
-    if (msg.songs === 0) return advanceDj(room, "served");
+    if (msg.songs === 0) {
+      if (isProfession(findPlayer(room, game.djId), "yaju")) return { error: "這輪必須播。" };
+      return advanceDj(room, "served");
+    }
     return { error: "沒有這個首數。" };
   }
 
@@ -406,16 +415,21 @@ export function handleDjAction(room, playerId, msg) {
     if (game.pendingRatings?.[playerId] != null) return { error: "這首你評過了。" };
     const problem = ratingError(room, playerId, msg.value);
     if (problem) return problem;
-    const gates = ratingGates(room, playerId, msg.value);
+    let value = msg.value;
+    if (isProfession(findPlayer(room, game.djId), "niulai")) value = niulaiScore();
+    if ((value === -1 || value === -2) && game.blockVideoId && game.blockVideoId === game.videoId) {
+      return { error: "這一首不能打負分。" };
+    }
+    const gates = ratingGates(room, playerId, value);
     if (gates.length) {
       if (!game.pendingRatings) game.pendingRatings = {};
       if (!game.ratingQueue) game.ratingQueue = {};
-      game.pendingRatings[playerId] = msg.value;
+      game.pendingRatings[playerId] = value;
       game.ratingQueue[playerId] = gates.slice(1);
       if (!enqueueOffer(room, gates[0])) releaseRating(room, gates[0]);
       return { ok: true };
     }
-    return finishRating(room, playerId, msg.value);
+    return finishRating(room, playerId, value);
   }
 
   if (name === "djEnded") {
@@ -446,6 +460,7 @@ export function forceWheelStop(room, songs) {
   if (!game || game.kind !== "dj") return { error: "現在不是如果我是迪爵。" };
   if (game.step !== "pick") return { error: "現在還不能轉。" };
   if (songs !== 0 && songs !== 1 && songs !== 2 && songs !== 3) return { error: "沒有這個首數。" };
+  if (songs === 0 && isProfession(findPlayer(room, game.djId), "yaju")) return { error: "這輪必須播。" };
   game.forcedMode = null;
   game.extraSpins = 0;
   if (room.cards) room.cards.pendingMode = null;
@@ -471,6 +486,33 @@ export function forceReel(room, index) {
     return { ok: true };
   }
   return { error: "現在還不能轉。" };
+}
+
+export function rerollReel(room, playerId) {
+  const player = findPlayer(room, playerId);
+  if (!isProfession(player, "tralala")) return { error: "現在不能用這個職業。" };
+  const game = room.game;
+  if (!game || game.kind !== "dj") return { error: "現在不是如果我是迪爵。" };
+  if (game.reel == null) return { error: "拉霸機還沒停。" };
+  if (game.tralalaReel) return { error: "這一輪已經重轉過了。" };
+  game.reel = Math.floor(Math.random() * REEL_ITEMS.length);
+  game.reelSpin = (game.reelSpin || 0) + 1;
+  game.tralalaReel = true;
+  return { ok: true };
+}
+
+export function respinWheel(room, playerId) {
+  const player = findPlayer(room, playerId);
+  if (!isProfession(player, "ballerina")) return { error: "現在不能用這個職業。" };
+  const game = room.game;
+  if (!game || game.kind !== "dj" || game.step !== "pick") return { error: "現在還不能轉。" };
+  if (!(game.wheelSpin > 0)) return { error: "轉盤還沒轉。" };
+  if (game.ballerinaSpin) return { error: "這一輪已經再轉過了。" };
+  const stops = isProfession(findPlayer(room, game.djId), "yaju") ? [1, 2, 3] : [1, 2, 3, 0];
+  game.wheelSongs = stops[Math.floor(Math.random() * stops.length)];
+  game.wheelSpin = (game.wheelSpin || 0) + 1;
+  game.ballerinaSpin = true;
+  return { ok: true };
 }
 
 export function advanceDisconnectedDj(room) {

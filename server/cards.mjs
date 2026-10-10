@@ -1,4 +1,4 @@
-import { drawCooldownMs, handMaxOf, publicProfession, startingSpins, wheelBoost } from "./professions.mjs";
+import { dropDuel, isProfession, publicProfession } from "./professions.mjs";
 
 export const HAND_MAX = 5;
 export const DRAW_EVERY_MS = 3 * 60 * 1000;
@@ -56,8 +56,7 @@ const DRAW_WEIGHTS = [
   ["swap", 2],
 ];
 
-function drawTable(player) {
-  const boost = wheelBoost(player);
+function drawTable() {
   const slices = [];
   const missing = [];
   for (const [id, weight] of DRAW_WEIGHTS) {
@@ -66,7 +65,7 @@ function drawTable(player) {
       missing.push(id);
       continue;
     }
-    slices.push({ id, name: spec.name, weight: weight * 90 * (id === boost ? 2 : 1) });
+    slices.push({ id, name: spec.name, weight: weight * 90 });
   }
   slices.push({ id: "voucher", name: "兌換券", weight: 1000 });
   return { slices, missing };
@@ -80,19 +79,14 @@ function ensureSpin(cards) {
   if (!cards.lastSpin) cards.lastSpin = {};
 }
 
-function spinsLeftOf(cards, player) {
+function spinsLeftOf(cards, playerId) {
   ensureSpin(cards);
-  const playerId = player.id;
-  if (cards.spinsLeft[playerId] == null) cards.spinsLeft[playerId] = startingSpins(player);
+  if (cards.spinsLeft[playerId] == null) cards.spinsLeft[playerId] = 3;
   return cards.spinsLeft[playerId];
 }
 
-function handFullMessage(player) {
-  return handMaxOf(player) === 6 ? "手上已經有六張牌。" : "手上已經有五張牌。";
-}
-
-function rollDrawCard(player) {
-  const table = drawTable(player);
+function rollDrawCard() {
+  const table = drawTable();
   if (!table.slices.length) return null;
   const total = table.slices.reduce((sum, slice) => sum + slice.weight, 0);
   let roll = Math.random() * total;
@@ -109,14 +103,14 @@ export function spinDraw(room, playerId, now = Date.now()) {
   if (!player) return { error: "你不在這個房間。" };
   if (!room.cards) return { error: "現在不能抽牌。" };
   const hand = handOf(room, playerId);
-  if (hand.length >= handMaxOf(player)) return { error: "手牌滿了，先用掉一張。" };
+  if (hand.length >= HAND_MAX) return { error: "手牌滿了，先用掉一張。" };
   const cards = room.cards;
   ensureSpin(cards);
   if (cards.pendingDraw[playerId]) return { error: "轉盤還在轉。" };
-  const left = spinsLeftOf(cards, player);
+  const left = spinsLeftOf(cards, playerId);
   const readyAt = cards.spinReady[playerId] || 0;
   if (left <= 0 && now < readyAt) return { error: "還沒到可以轉的時間。" };
-  const picked = rollDrawCard(player);
+  const picked = rollDrawCard();
   if (!picked) return { error: "現在沒有可以抽的牌。" };
   cards.pendingDraw[playerId] = { card: picked.id, at: now };
   cards.wheelSpin[playerId] = (cards.wheelSpin[playerId] || 0) + 1;
@@ -135,35 +129,31 @@ export function takeDraw(room, playerId, now = Date.now()) {
     if (!cards.vouchers) cards.vouchers = {};
     cards.vouchers[playerId] = (cards.vouchers[playerId] || 0) + 1;
     delete cards.pendingDraw[playerId];
-    const voucherLeft = spinsLeftOf(cards, player);
+    const voucherLeft = spinsLeftOf(cards, playerId);
     if (voucherLeft > 0) cards.spinsLeft[playerId] = voucherLeft - 1;
-    if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + drawCooldownMs(player);
+    if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + DRAW_SPIN_MS;
     cards.lastSpin[playerId] = { card: "voucher", at: now };
     return { ok: true, card: "voucher" };
   }
   const hand = handOf(room, playerId);
-  if (hand.length >= handMaxOf(player)) return { error: "手牌滿了，先用掉一張。" };
+  if (hand.length >= HAND_MAX) return { error: "手牌滿了，先用掉一張。" };
   hand.push(pending.card);
   delete cards.pendingDraw[playerId];
-  const left = spinsLeftOf(cards, player);
+  const left = spinsLeftOf(cards, playerId);
   if (left > 0) cards.spinsLeft[playerId] = left - 1;
-  if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + drawCooldownMs(player);
+  if ((cards.spinsLeft[playerId] || 0) <= 0) cards.spinReady[playerId] = now + DRAW_SPIN_MS;
   cards.lastSpin[playerId] = { card: pending.card, at: now };
   return { ok: true, card: pending.card };
 }
 
-function presentDraw(cards, viewer) {
-  const viewerId = viewer?.id;
-  const table = drawTable(viewer);
+function presentDraw(cards, viewerId) {
+  const table = drawTable();
   const readyAt = cards?.spinReady?.[viewerId] || 0;
   const last = cards?.lastSpin?.[viewerId];
-  const spinsLeft = cards?.spinsLeft?.[viewerId] == null ? startingSpins(viewer) : cards.spinsLeft[viewerId];
+  const spinsLeft = cards?.spinsLeft?.[viewerId] == null ? 3 : cards.spinsLeft[viewerId];
   return {
     readyAt,
     spinsLeft,
-    freeDraws: startingSpins(viewer),
-    cooldownMs: drawCooldownMs(viewer),
-    handMax: handMaxOf(viewer),
     wheelSpin: cards?.wheelSpin?.[viewerId] || 0,
     wheelCard: cards?.pendingDraw?.[viewerId]?.card || null,
     lastId: last?.card || null,
@@ -263,7 +253,7 @@ export function buyCard(room, playerId, cardId) {
   if (player.score < 0) return { error: "分數是負的，不能買。" };
   if (player.score < spec.cost) return { error: "分數不夠，不能買。" };
   const hand = handOf(room, playerId);
-  if (hand.length >= handMaxOf(player)) return { error: handFullMessage(player) };
+  if (hand.length >= HAND_MAX) return { error: "手上已經有五張牌。" };
   const before = player.score;
   player.score -= spec.cost;
   hand.push(spec.id);
@@ -388,18 +378,85 @@ function applyCard(room, playerId, cardId, msg) {
   return { error: "沒有這張牌。" };
 }
 
-function applyFunction(room, playerId, cardId, msg, now = Date.now()) {
-  const picked = otherOnline(room, playerId, msg?.targetId);
-  if (picked.error) return picked;
+function writeEffect(room, targetId, cardId, now = Date.now()) {
   if (!room.cards.effects) room.cards.effects = {};
-  if (!room.cards.effects[picked.player.id]) room.cards.effects[picked.player.id] = {};
-  const current = room.cards.effects[picked.player.id][cardId];
+  if (!room.cards.effects[targetId]) room.cards.effects[targetId] = {};
+  const current = room.cards.effects[targetId][cardId];
   const active = current && current.until > now ? current : null;
-  room.cards.effects[picked.player.id][cardId] = {
+  room.cards.effects[targetId][cardId] = {
     until: (active ? active.until : now) + FUNCTION_MS,
     settled: active ? Boolean(active.settled) : false,
     firstId: active ? active.firstId || null : null,
+    pressIds: active ? [...(active.pressIds || (active.firstId ? [active.firstId] : []))] : [],
   };
+  return { ok: true };
+}
+
+function applyFunction(room, playerId, cardId, msg, now = Date.now()) {
+  const picked = otherOnline(room, playerId, msg?.targetId);
+  if (picked.error) return picked;
+  if (isProfession(picked.player, "jiege") && !picked.player.jiegeUsed) {
+    if (!room.cards.jiegeQueue) room.cards.jiegeQueue = [];
+    room.cards.jiegeQueue.push({ casterId: playerId, targetId: picked.player.id, cardId });
+    return { ok: true };
+  }
+  return writeEffect(room, picked.player.id, cardId, now);
+}
+
+function flushJiege(room, now = Date.now()) {
+  const queue = room.cards?.jiegeQueue || [];
+  for (let i = queue.length - 1; i >= 0; i -= 1) {
+    const item = queue[i];
+    const target = findPlayer(room, item.targetId);
+    if (isProfession(target, "jiege") && !target.jiegeUsed) continue;
+    queue.splice(i, 1);
+    if (target) writeEffect(room, target.id, item.cardId, now);
+  }
+}
+
+export function answerJiege(room, playerId, refuse, now = Date.now()) {
+  const queue = room.cards?.jiegeQueue || [];
+  const index = queue.findIndex((item) => item.targetId === playerId);
+  if (index < 0) return { error: "現在沒有要你回答。" };
+  const [item] = queue.splice(index, 1);
+  const player = findPlayer(room, playerId);
+  if (refuse && isProfession(player, "jiege") && !player.jiegeUsed) {
+    player.jiegeUsed = true;
+    const caster = findPlayer(room, item.casterId);
+    if (caster) writeEffect(room, caster.id, item.cardId, now);
+  } else if (player) {
+    writeEffect(room, player.id, item.cardId, now);
+  }
+  flushJiege(room, now);
+  return { ok: true };
+}
+
+export function releaseJiege(room, playerId, now = Date.now()) {
+  const player = findPlayer(room, playerId);
+  if (player?.profession === "jiege") return;
+  flushJiege(room, now);
+}
+
+export function endOneEffect(room, playerId, targetId, cardId, now = Date.now()) {
+  const player = findPlayer(room, playerId);
+  if (!isProfession(player, "tung")) return { error: "現在不能用這個職業。" };
+  const state = room.cards?.effects?.[targetId]?.[cardId];
+  if (!state || state.until <= now) return { error: "這個規則已經結束。" };
+  delete room.cards.effects[targetId][cardId];
+  if (!Object.keys(room.cards.effects[targetId]).length) delete room.cards.effects[targetId];
+  return { ok: true };
+}
+
+export function clearAllEffects(room, playerId, now = Date.now()) {
+  const player = findPlayer(room, playerId);
+  if (!isProfession(player, "bombardiro")) return { error: "現在不能用這個職業。" };
+  if (player.bombardiroUsed) return { error: "這一趟已經用過了。" };
+  const active = Object.values(room.cards?.effects || {}).some((effects) =>
+    Object.values(effects).some((state) => state && state.until > now),
+  );
+  if (!active) return { error: "現在沒有倒數。" };
+  room.cards.effects = {};
+  player.bombardiroUsed = true;
   return { ok: true };
 }
 
@@ -427,22 +484,23 @@ export function catchEffect(room, playerId, targetId, cardId, now = Date.now()) 
   const state = room.cards?.effects?.[targetId]?.[cardId];
   if (!state || state.until <= now) return { error: "這個規則已經結束。" };
   if (state.settled) return { error: "這一回已經算過了。" };
-  if (!state.firstId) {
-    state.firstId = playerId;
-    return { ok: true };
-  }
-  if (state.firstId === playerId) return { error: "你已經按過了。" };
-  const first = findPlayer(room, state.firstId);
+  if (!state.pressIds) state.pressIds = state.firstId ? [state.firstId] : [];
+  if (state.pressIds.includes(playerId)) return { error: "你已經按過了。" };
+  state.pressIds.push(playerId);
+  state.firstId = state.pressIds[0] || null;
+  const needed = isProfession(target, "nailong") ? 3 : 2;
+  if (state.pressIds.length < needed) return { ok: true };
   const beforeTarget = target.score;
-  const beforePlayer = player.score;
-  const beforeFirst = first?.score;
   target.score -= 1;
-  player.score += 1;
-  if (first && first.id !== player.id) first.score += 1;
-  state.settled = true;
   if (target.score !== beforeTarget) offerHide(room, target.id);
-  if (player.score !== beforePlayer) offerHide(room, player.id);
-  if (first && first.score !== beforeFirst) offerHide(room, first.id);
+  for (const id of state.pressIds) {
+    const person = findPlayer(room, id);
+    if (!person) continue;
+    const before = person.score;
+    person.score += 1;
+    if (person.score !== before) offerHide(room, person.id);
+  }
+  state.settled = true;
   return { ok: true };
 }
 
@@ -540,6 +598,7 @@ export function skipPassed(room, next, online, pool) {
 }
 
 export function forgetPlayer(room, playerId) {
+  dropDuel(room, playerId);
   const cards = room.cards;
   if (!cards) return;
   delete cards.hands[playerId];
@@ -559,11 +618,15 @@ export function forgetPlayer(room, playerId) {
   if (cards.declined) delete cards.declined[playerId];
   if (cards.functions) delete cards.functions[playerId];
   if (cards.vouchers) delete cards.vouchers[playerId];
+  if (cards.jiegeQueue) {
+    cards.jiegeQueue = cards.jiegeQueue.filter((item) => item.targetId !== playerId && item.casterId !== playerId);
+  }
   if (cards.effects) {
     delete cards.effects[playerId];
     for (const effects of Object.values(cards.effects)) {
       for (const state of Object.values(effects)) {
-        if (state.firstId === playerId) state.firstId = null;
+        if (state.pressIds) state.pressIds = state.pressIds.filter((id) => id !== playerId);
+        if (state.firstId === playerId) state.firstId = state.pressIds?.[0] || null;
       }
     }
   }
@@ -588,7 +651,7 @@ export function presentCards(room, viewerId) {
       kind: "function",
     })),
     vouchers: cards?.vouchers?.[viewerId] || 0,
-    effects: presentEffects(room),
+    effects: presentEffects(room, viewerId),
     peek: peek
       ? {
           nickname: peekPlayer?.nickname || "旅伴",
@@ -607,8 +670,7 @@ export function presentCards(room, viewerId) {
       nextDjId: game?.nextDjId || cards?.pendingNext || null,
       extraSpins: game?.extraSpins || 0,
     },
-    handMax: handMaxOf(findPlayer(room, viewerId)),
-    draw: presentDraw(cards, findPlayer(room, viewerId)),
+    draw: presentDraw(cards, viewerId),
   };
 }
 
@@ -640,11 +702,10 @@ export function queueNextDj(room, targetId) {
 }
 
 export function giveCard(room, playerId, cardId) {
-  const player = findPlayer(room, playerId);
-  if (!player) return { error: "請選一位旅伴。" };
+  if (!findPlayer(room, playerId)) return { error: "請選一位旅伴。" };
   if (!specOf(cardId)) return { error: "沒有這張牌。" };
   const hand = handOf(room, playerId);
-  if (hand.length >= handMaxOf(player)) return { error: handFullMessage(player) };
+  if (hand.length >= HAND_MAX) return { error: "手上已經有五張牌。" };
   hand.push(cardId);
   return { ok: true };
 }
@@ -708,14 +769,15 @@ function holds(room, playerId, cardId) {
   return (room.cards?.hands?.[playerId] || []).includes(cardId);
 }
 
-function presentEffects(room, now = Date.now()) {
+function presentEffects(room, viewerId, now = Date.now()) {
   const rows = [];
   for (const [targetId, effects] of Object.entries(room.cards?.effects || {})) {
     const target = findPlayer(room, targetId);
     for (const [cardId, state] of Object.entries(effects)) {
       if (!state || state.until <= now) continue;
       const spec = functionSpec(cardId);
-      const first = state.firstId ? findPlayer(room, state.firstId) : null;
+      const presses = state.pressIds || (state.firstId ? [state.firstId] : []);
+      const first = presses[0] ? findPlayer(room, presses[0]) : null;
       rows.push({
         playerId: targetId,
         nickname: target?.nickname || "旅伴",
@@ -724,8 +786,11 @@ function presentEffects(room, now = Date.now()) {
         rule: spec?.rule || "",
         until: state.until,
         settled: Boolean(state.settled),
-        firstId: state.firstId || null,
+        firstId: presses[0] || null,
         firstName: first?.nickname || "",
+        presses: presses.length,
+        needed: isProfession(target, "nailong") ? 3 : 2,
+        pressed: presses.includes(viewerId),
       });
     }
   }
@@ -997,6 +1062,16 @@ export function takeUsedPrompt(room, playerId, cardId) {
 }
 
 export function promptFor(room, viewerId) {
+  const held = (room.cards?.jiegeQueue || []).find((item) => item.targetId === viewerId);
+  if (held) {
+    const spec = functionSpec(held.cardId);
+    const caster = findPlayer(room, held.casterId);
+    return {
+      kind: "jiege",
+      card: held.cardId,
+      text: `${caster?.nickname || "有人"}對你使用${spec?.name || "功能牌"}。要說不要嗎？`,
+    };
+  }
   const offer = (room.cards?.offers || []).find((item) => item.playerId === viewerId);
   if (!offer) return null;
   return {

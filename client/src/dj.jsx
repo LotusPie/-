@@ -64,7 +64,16 @@ function reducedMotion() {
   );
 }
 
-function ModeWheel({ wheelSongs, wheelSpin }) {
+function songSlices(noSkip) {
+  if (!noSkip) return SONG_SLICES;
+  return [
+    { songs: 1, label: "一首歌", mid: 60 },
+    { songs: 2, label: "二首歌", mid: 180 },
+    { songs: 3, label: "三首歌", mid: 300 },
+  ];
+}
+
+function ModeWheel({ wheelSongs, wheelSpin, noSkip = false }) {
   const turns = useRef(0);
   const [angle, setAngle] = useState(0);
   useEffect(() => {
@@ -73,15 +82,16 @@ function ModeWheel({ wheelSongs, wheelSpin }) {
       setAngle(0);
       return;
     }
-    const mid = SONG_SLICES.find((slice) => slice.songs === wheelSongs)?.mid ?? 60;
+    const mid = songSlices(noSkip).find((slice) => slice.songs === wheelSongs)?.mid ?? 60;
     turns.current += 5;
     setAngle(turns.current * 360 - mid);
-  }, [wheelSpin, wheelSongs]);
+  }, [wheelSpin, wheelSongs, noSkip]);
+  const slices = songSlices(noSkip);
   return (
     <div className="wheel-wrap">
       <div className="wheel-pointer" aria-hidden="true" />
       <div className="wheel" style={{ transform: `rotate(${angle}deg)` }}>
-        {SONG_SLICES.map((slice) => {
+        {slices.map((slice) => {
           const rad = (slice.mid * Math.PI) / 180;
           const left = 50 + Math.sin(rad) * 30;
           const top = 50 - Math.cos(rad) * 30;
@@ -640,6 +650,10 @@ export function DjGame({ room, youId, act }) {
   const game = room.game;
   const mine = game.djId === youId;
   const dj = playerOf(room, game.djId);
+  const me = playerOf(room, youId);
+  const noSkip = dj?.profile?.profession?.id === "yaju";
+  const ballerina = me?.profile?.profession?.id === "ballerina";
+  const tralala = me?.profile?.profession?.id === "tralala";
   const djName = dj?.nickname || nameOf(room, game.djId);
   const [url, setUrl] = useState("");
   const [shownSpin, setShownSpin] = useState(0);
@@ -693,10 +707,20 @@ export function DjGame({ room, youId, act }) {
         <strong className="who-name">{djName}{mine ? "（你）" : ""}</strong>
         {game.step === "live" ? <span className="person-sub">這支手機在播</span> : null}
       </p>
+      {ballerina && game.step === "pick" && game.wheelSpin > 0 && !game.ballerinaSpin ? (
+        <button className="secondary" type="button" onClick={() => act({ name: "roleSpin" })}>
+          再轉一次首數
+        </button>
+      ) : null}
+      {tralala && game.reel != null && !game.tralalaReel ? (
+        <button className="secondary" type="button" onClick={() => act({ name: "roleReel" })}>
+          重轉這一輪的條件
+        </button>
+      ) : null}
 
       {game.step === "pick" && (
         <section className="stack">
-          <ModeWheel wheelSongs={game.wheelSongs} wheelSpin={game.wheelSpin || 0} />
+          <ModeWheel wheelSongs={game.wheelSongs} wheelSpin={game.wheelSpin || 0} noSkip={noSkip} />
           {wheelLanded && game.wheelSongs === 0 ? (
             <p className="reel-result" aria-live="polite">
               <span className="kicker">轉盤</span>
@@ -711,7 +735,8 @@ export function DjGame({ room, youId, act }) {
               type="button"
               disabled={(game.wheelSpin || 0) > 0 && !(game.extraSpins > 0)}
               onClick={() => {
-                const songs = WHEEL_STOPS[Math.floor(Math.random() * WHEEL_STOPS.length)];
+                const stops = noSkip ? [1, 2, 3] : WHEEL_STOPS;
+                const songs = stops[Math.floor(Math.random() * stops.length)];
                 act({ name: "djSpin", songs });
               }}
             >

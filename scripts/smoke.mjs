@@ -23,13 +23,13 @@ function scoreOf(room, id) {
   return room.players.find((player) => player.id === id).score;
 }
 
-function freshRoom(names, profession = "niulai") {
-  const created = createPlayerRoom(names[0], profession);
+function freshRoom(names) {
+  const created = createPlayerRoom(names[0]);
   assert.equal(created.error, undefined);
   created.room.code = "TEST";
   const ids = [created.youId];
   for (const name of names.slice(1)) {
-    const joined = joinRoom(created.room, { nickname: name, profession });
+    const joined = joinRoom(created.room, { nickname: name });
     assert.equal(joined.error, undefined);
     ids.push(joined.youId);
   }
@@ -88,16 +88,15 @@ function testDecksAndCopy() {
 function testLogic() {
   assert.equal(createPlayerRoom("   ").error, "請先取一個暱稱。");
   assert.ok(createPlayerRoom("一二三四五六七八九十一二三").error);
-  assert.equal(createPlayerRoom("阿凱").error, "請先選一個職業。");
-  assert.equal(createPlayerRoom("阿凱", "nope").error, "請先選一個職業。");
+  assert.equal(createPlayerRoom("阿凱").error, undefined);
 
   const { room, ids } = freshRoom(["阿凱", "小魚", "阿德"]);
   const [a, b, c] = ids;
   assert.equal(room.players.length, 3);
 
   const full = freshRoom(["甲"]);
-  for (let i = 0; i < 11; i += 1) joinRoom(full.room, { nickname: `旅伴${i}`, profession: "niulai" });
-  assert.ok(joinRoom(full.room, { nickname: "太多", profession: "niulai" }).error);
+  for (let i = 0; i < 11; i += 1) joinRoom(full.room, { nickname: `旅伴${i}` });
+  assert.ok(joinRoom(full.room, { nickname: "太多" }).error);
 
   assert.match(applyAction(room, b, { name: "start", game: "prompt" }).error, /沒有這個遊戲/);
   assert.match(applyAction(room, a, { name: "start", game: "vibe" }).error, /沒有這個遊戲/);
@@ -696,11 +695,11 @@ async function testServer() {
     const host = await openClient(port);
     const guest = await openClient(port);
     clients.push(host, guest);
-    host.send({ type: "create", nickname: "阿凱", profession: "niulai" });
+    host.send({ type: "create", nickname: "阿凱" });
     const created = await waitUntil(host.states, (msg) => msg.type === "state");
     const code = created.room.code;
     assert.equal(code.length, 4);
-    guest.send({ type: "join", code, nickname: "小魚", profession: "niulai" });
+    guest.send({ type: "join", code, nickname: "小魚" });
     const joined = await waitUntil(guest.states, (msg) => msg.room?.players?.length === 2);
     assert.equal(joined.room.players.map((player) => player.nickname).join(","), "阿凱,小魚");
     const hostSawGuest = await waitUntil(host.states, (msg) => msg.room?.players?.length === 2);
@@ -1046,7 +1045,7 @@ function testProfile() {
   assert.equal(profile.includes("function PersonFace"), true);
   assert.equal(play.includes("PersonFace"), true);
   assert.equal(cardsUi.includes("PersonFace"), true);
-  assert.equal(cardsUi.includes("cards.handMax || 5"), true);
+  assert.equal(cardsUi.includes("hand.length >= 5"), true);
   assert.equal(djUi.includes("這支手機在播"), true);
   assert.equal(djUi.includes("評分的人"), true);
   assert.equal(server.includes("buf.length > 8000"), true);
@@ -1397,83 +1396,146 @@ function testFunctionCards() {
   assert.equal(cardsUi.includes("普通牌"), true);
 }
 
-function sliceWeight(room, viewerId, cardId) {
-  const slices = serialize(room, viewerId).cards.draw.slices;
-  return slices.find((slice) => slice.id === cardId).weight;
-}
-
 function testProfessions() {
-  const base = freshRoom(["阿凱", "小魚"]);
-  assert.equal(sliceWeight(base.room, base.ids[0], "respin"), 900);
-  assert.equal(sliceWeight(base.room, base.ids[0], "steal"), 450);
-  assert.equal(sliceWeight(base.room, base.ids[0], "mode"), 720);
-  assert.equal(serialize(base.room, base.ids[0]).cards.handMax, 5);
-  assert.equal(serialize(base.room, base.ids[0]).cards.draw.freeDraws, 3);
-  assert.equal(serialize(base.room, base.ids[0]).cards.draw.cooldownMs, 30 * 60 * 1000);
-  const niulai = serialize(base.room, base.ids[0]).players[0].profile.profession;
-  assert.equal(niulai.name, "牛來");
-  assert.equal(niulai.effect, "迷因懲罰由他加權");
-  assert.equal(niulai.memeWeight, true);
-  assert.equal(base.room.players[0].profile, undefined);
+  const base = freshRoom(["阿凱", "小魚", "阿德", "阿明"]);
+  const [a, b, c, d] = base.ids;
+  assert.equal(base.room.players[0].profession, undefined);
+  assert.equal(base.room.cards.hands[a], undefined);
+  assert.equal(serialize(base.room, a).cards.draw.spinsLeft, 3);
+  assert.equal(serialize(base.room, a).roles.length, 8);
+  assert.equal(applyAction(base.room, a, { name: "roleTake", role: "jiege" }).ok, true);
+  assert.equal(base.room.players[0].profession, "jiege");
+  assert.equal(serialize(base.room, b).players[0].profile.profession.name, "傑哥");
+  assert.equal(applyAction(base.room, b, { name: "roleTake", role: "jiege" }).ok, true);
+  assert.equal(base.room.duel.holderId, a);
+  assert.equal(base.room.duel.challengerId, b);
+  assert.match(applyAction(base.room, c, { name: "roleTake", role: "yaju" }).error, /猜拳/);
+  assert.equal(applyAction(base.room, a, { name: "roleThrow", hand: "scissors" }).ok, true);
+  const hidden = serialize(base.room, b).duel;
+  assert.equal(hidden.youChose, "");
+  assert.equal(hidden.challengerReady, false);
+  assert.equal(hidden.holderReady, true);
+  assert.equal(JSON.stringify(hidden).includes("剪刀"), false);
+  assert.equal(applyAction(base.room, b, { name: "roleThrow", hand: "scissors" }).ok, true);
+  assert.equal(base.room.roleResult.tie, true);
+  assert.equal(base.room.duel.roleId, "jiege");
+  assert.equal(base.room.players.find((player) => player.id === a).profession, "jiege");
+  assert.equal(applyAction(base.room, b, { name: "roleThrow", hand: "rock" }).ok, true);
+  assert.equal(applyAction(base.room, a, { name: "roleThrow", hand: "scissors" }).ok, true);
+  assert.equal(base.room.duel, null);
+  assert.equal(base.room.players.find((player) => player.id === b).profession, "jiege");
+  assert.equal(base.room.players.find((player) => player.id === a).profession, undefined);
+  assert.match(applyAction(base.room, b, { name: "roleTake", role: "yaju" }).error, /已經有職業/);
 
-  const yaju = freshRoom(["野獸", "牛"], "yaju");
-  const cow = joinRoom(yaju.room, { nickname: "旁邊", profession: "niulai" });
-  assert.equal(sliceWeight(yaju.room, yaju.ids[0], "respin"), 1800);
-  assert.equal(sliceWeight(yaju.room, yaju.ids[0], "peek"), 1260);
-  assert.equal(sliceWeight(yaju.room, cow.youId, "respin"), 900);
-  assert.equal(sliceWeight(yaju.room, yaju.ids[1], "respin"), 1800);
+  base.room.cards.functions[c] = ["mute", "seal", "laugh"];
+  assert.equal(applyAction(base.room, c, { name: "cardPlay", card: "mute", targetId: b }).ok, true);
+  assert.equal(base.room.cards.effects?.[b], undefined);
+  assert.equal(base.room.cards.jiegeQueue[0].cardId, "mute");
+  assert.equal(applyAction(base.room, b, { name: "roleAnswer", refuse: false }).ok, true);
+  assert.ok(base.room.cards.effects[b].mute);
+  assert.equal(base.room.players.find((player) => player.id === b).jiegeUsed, undefined);
+  assert.equal(applyAction(base.room, c, { name: "cardPlay", card: "seal", targetId: b }).ok, true);
+  assert.equal(applyAction(base.room, b, { name: "roleAnswer", refuse: true }).ok, true);
+  assert.equal(base.room.cards.effects[b].seal, undefined);
+  assert.ok(base.room.cards.effects[c].seal);
+  assert.equal(base.room.players.find((player) => player.id === b).jiegeUsed, true);
+  assert.equal(applyAction(base.room, c, { name: "cardPlay", card: "laugh", targetId: b }).ok, true);
+  assert.ok(base.room.cards.effects[b].laugh);
 
-  const tung = createPlayerRoom("木", "tung");
-  assert.equal(sliceWeight(tung.room, tung.youId, "steal"), 900);
-  assert.equal(sliceWeight(tung.room, tung.youId, "respin"), 900);
-  const bomb = createPlayerRoom("鱷", "bombardiro");
-  assert.equal(sliceWeight(bomb.room, bomb.youId, "mode"), 1440);
-  assert.equal(sliceWeight(bomb.room, bomb.youId, "steal"), 450);
-
-  const jiege = createPlayerRoom("傑", "jiege");
-  assert.deepEqual(jiege.room.cards.hands[jiege.youId], ["shield"]);
-  joinRoom(jiege.room, { playerId: jiege.youId, nickname: "傑", profession: "ballerina" });
-  assert.deepEqual(jiege.room.cards.hands[jiege.youId], ["shield"]);
-  assert.equal(jiege.room.players[0].profession, "jiege");
-
-  const nailong = createPlayerRoom("龍", "nailong");
-  nailong.room.cards.spinsLeft[nailong.youId] = 1;
-  const before = Date.now();
+  assert.equal(applyAction(base.room, a, { name: "roleTake", role: "yaju" }).ok, true);
+  assert.equal(applyAction(base.room, a, { name: "start", game: "dj" }).ok, true);
+  assert.match(applyAction(base.room, a, { name: "djSpin", songs: 0 }).error, /必須播/);
+  assert.equal(applyAction(base.room, a, { name: "djSpin", songs: 1 }).ok, true);
+  assert.equal(applyAction(base.room, d, { name: "roleTake", role: "ballerina" }).ok, true);
   const random = Math.random;
   Math.random = () => 0;
   try {
-    assert.equal(applyAction(nailong.room, nailong.youId, { name: "cardSpin" }).ok, true);
-    assert.equal(applyAction(nailong.room, nailong.youId, { name: "cardSpinTake" }).ok, true);
+    assert.equal(applyAction(base.room, d, { name: "roleSpin" }).ok, true);
   } finally {
     Math.random = random;
   }
-  const waited = nailong.room.cards.spinReady[nailong.youId] - before;
-  assert.ok(waited >= 20 * 60 * 1000 - 2000 && waited <= 20 * 60 * 1000 + 2000);
-
-  const dancer = createPlayerRoom("杯", "ballerina");
-  assert.equal(serialize(dancer.room, dancer.youId).cards.draw.spinsLeft, 4);
-  assert.equal(serialize(dancer.room, dancer.youId).cards.draw.freeDraws, 4);
-  assert.equal(serialize(dancer.room, dancer.youId).players[0].drawsLeft, 4);
-
-  const shark = createPlayerRoom("鯊", "tralala");
-  const holder = shark.room.players[0];
-  holder.score = 100;
-  for (let i = 0; i < 6; i += 1) {
-    assert.equal(applyAction(shark.room, shark.youId, { name: "cardBuy", card: "pass" }).ok, true);
+  assert.equal(base.room.game.wheelSpin, 2);
+  assert.equal(base.room.game.wheelSongs, 1);
+  assert.match(applyAction(base.room, d, { name: "roleSpin" }).error, /再轉過了/);
+  assert.equal(applyAction(base.room, a, { name: "djMode", songs: 1 }).ok, true);
+  assert.equal(applyAction(base.room, a, { name: "djReel", index: 1 }).ok, true);
+  assert.match(applyAction(base.room, b, { name: "roleTake", role: "tralala" }).error, /已經有職業/);
+  const open = freshRoom(["主角", "配角"]);
+  assert.equal(applyAction(open.room, open.ids[1], { name: "roleTake", role: "tralala" }).ok, true);
+  assert.equal(applyAction(open.room, open.ids[0], { name: "start", game: "dj" }).ok, true);
+  assert.equal(applyAction(open.room, open.ids[0], { name: "djMode", songs: 1 }).ok, true);
+  assert.equal(applyAction(open.room, open.ids[0], { name: "djReel", index: 1 }).ok, true);
+  Math.random = () => 0.5;
+  try {
+    assert.equal(applyAction(open.room, open.ids[1], { name: "roleReel" }).ok, true);
+  } finally {
+    Math.random = random;
   }
-  assert.match(applyAction(shark.room, shark.youId, { name: "cardBuy", card: "pass" }).error, /六張/);
-  assert.equal(serialize(shark.room, shark.youId).cards.handMax, 6);
+  assert.equal(open.room.game.reel, 6);
+  assert.match(applyAction(open.room, open.ids[1], { name: "roleReel" }).error, /重轉過了/);
+
+  const caught = freshRoom(["龍", "甲", "乙", "丙"]);
+  assert.equal(applyAction(caught.room, caught.ids[0], { name: "roleTake", role: "nailong" }).ok, true);
+  caught.room.cards.effects = { [caught.ids[0]]: { mute: { until: Date.now() + 60000, settled: false, firstId: null, pressIds: [] } } };
+  assert.equal(applyAction(caught.room, caught.ids[1], { name: "cardCatch", card: "mute", targetId: caught.ids[0] }).ok, true);
+  assert.equal(applyAction(caught.room, caught.ids[2], { name: "cardCatch", card: "mute", targetId: caught.ids[0] }).ok, true);
+  assert.equal(caught.room.cards.effects[caught.ids[0]].mute.settled, false);
+  assert.equal(applyAction(caught.room, caught.ids[3], { name: "cardCatch", card: "mute", targetId: caught.ids[0] }).ok, true);
+  assert.equal(caught.room.cards.effects[caught.ids[0]].mute.settled, true);
+  assert.equal(caught.room.players[0].score, -1);
+  assert.equal(caught.room.players[1].score, 1);
+
+  const cow = freshRoom(["牛", "評"]);
+  assert.equal(applyAction(cow.room, cow.ids[0], { name: "roleTake", role: "niulai" }).ok, true);
+  assert.equal(applyAction(cow.room, cow.ids[0], { name: "start", game: "dj" }).ok, true);
+  cueLive(cow.room, cow.ids[0]);
+  Math.random = () => 0;
+  try {
+    assert.equal(applyAction(cow.room, cow.ids[1], { name: "djRate", value: 2 }).ok, true);
+  } finally {
+    Math.random = random;
+  }
+  assert.equal(cow.room.players[0].score, -2);
+  assert.equal(cow.room.players[1].score, 1);
+
+  const wood = freshRoom(["木", "被"]);
+  assert.equal(applyAction(wood.room, wood.ids[0], { name: "roleTake", role: "tung" }).ok, true);
+  wood.room.cards.effects = {
+    [wood.ids[1]]: {
+      mute: { until: Date.now() + 60000, settled: false, firstId: null, pressIds: [] },
+      seal: { until: Date.now() + 60000, settled: false, firstId: null, pressIds: [] },
+    },
+  };
+  assert.equal(applyAction(wood.room, wood.ids[0], { name: "roleEnd", card: "mute", targetId: wood.ids[1] }).ok, true);
+  assert.equal(wood.room.cards.effects[wood.ids[1]].mute, undefined);
+  assert.ok(wood.room.cards.effects[wood.ids[1]].seal);
+
+  const boom = freshRoom(["爆", "被"]);
+  assert.equal(applyAction(boom.room, boom.ids[0], { name: "roleTake", role: "bombardiro" }).ok, true);
+  boom.room.cards.effects = {
+    [boom.ids[1]]: { mute: { until: Date.now() + 60000, settled: false, firstId: null, pressIds: [] } },
+  };
+  assert.equal(applyAction(boom.room, boom.ids[0], { name: "roleClear" }).ok, true);
+  assert.deepEqual(boom.room.cards.effects, {});
+  boom.room.cards.effects = {
+    [boom.ids[1]]: { seal: { until: Date.now() + 60000, settled: false, firstId: null, pressIds: [] } },
+  };
+  assert.match(applyAction(boom.room, boom.ids[0], { name: "roleClear" }).error, /用過了/);
 
   const home = fs.readFileSync(path.join(root, "client/src/play.jsx"), "utf8");
   const catalog = fs.readFileSync(path.join(root, "client/src/professions.jsx"), "utf8");
   const face = fs.readFileSync(path.join(root, "client/src/profile.jsx"), "utf8");
-  assert.equal(home.includes("選一個職業"), true);
+  const djUi = fs.readFileSync(path.join(root, "client/src/dj.jsx"), "utf8");
+  assert.equal(home.includes("!profession"), false);
+  assert.equal(catalog.includes("選一個職業"), true);
+  assert.equal(catalog.includes("剪刀"), true);
   assert.equal(face.includes("ProfessionMark"), true);
   assert.equal(face.includes("person-face"), true);
+  assert.equal(djUi.includes("noSkip"), true);
   for (const name of ["傑哥", "野獸先輩", "奶龍", "牛來", "Tung Tung Tung Sahur", "Tralalero Tralala", "Bombardiro Crocodilo", "Ballerina Cappuccina"]) {
     assert.equal(catalog.includes(name), true, name);
   }
-  assert.equal(catalog.includes("迷因懲罰由他加權"), true);
+  assert.equal(catalog.includes("迷因懲罰由他加權"), false);
   for (const file of ["jiege.png", "yaju.png", "nailong.png", "niulai.png", "tung.png", "tralala.png", "bombardiro.jpg", "ballerina.png"]) {
     assert.equal(fs.existsSync(path.join(root, "client/src/assets/professions", file)), true, file);
   }

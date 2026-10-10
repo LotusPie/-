@@ -1,7 +1,7 @@
 import { promptDeck, vibeDeck, scoreDeck } from "./decks.mjs";
-import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction, releaseRating, syncPrompts } from "./dj.mjs";
-import { buyCard, catchEffect, clearRoundCards, declinePrompt, forgetPlayer, hiddenFrom, initCards, offerHide, playCard, presentCards, promptFor, redeemVoucher, scoreHideUntil, songLimit, spinDraw, takeDraw, takeUsedPrompt } from "./cards.mjs";
-import { professionOf, publicProfession, startingSpins } from "./professions.mjs";
+import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction, releaseRating, rerollReel, respinWheel, syncPrompts } from "./dj.mjs";
+import { answerJiege, buyCard, catchEffect, clearAllEffects, clearRoundCards, declinePrompt, endOneEffect, forgetPlayer, hiddenFrom, initCards, offerHide, playCard, presentCards, promptFor, redeemVoucher, releaseJiege, scoreHideUntil, songLimit, spinDraw, takeDraw, takeUsedPrompt } from "./cards.mjs";
+import { presentRoleState, publicProfession, takeRole, throwHand } from "./professions.mjs";
 
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
@@ -50,23 +50,9 @@ function freshPiles() {
   };
 }
 
-function grantProfession(room, player, professionId) {
-  const job = professionOf(professionId);
-  if (!job) return { error: "請先選一個職業。" };
-  player.profession = job.id;
-  if (job.grant) {
-    if (!room.cards.hands[player.id]) room.cards.hands[player.id] = [];
-    room.cards.hands[player.id].push(job.grant);
-  }
-  if (job.freeDraws) room.cards.spinsLeft[player.id] = job.freeDraws;
-  return { ok: true };
-}
-
-export function createPlayerRoom(nickname, professionId) {
+export function createPlayerRoom(nickname) {
   const parsed = normalizeNickname(nickname);
   if (parsed.error) return { error: parsed.error };
-  const job = professionOf(professionId);
-  if (!job) return { error: "請先選一個職業。" };
   const player = {
     id: crypto.randomUUID(),
     nickname: parsed.nickname,
@@ -86,7 +72,6 @@ export function createPlayerRoom(nickname, professionId) {
     cursors: { vibe: 0, honor: 0, treat: 0 },
     updatedAt: Date.now(),
   };
-  grantProfession(room, player, job.id);
   return { room, youId: player.id };
 }
 
@@ -356,7 +341,7 @@ export function reconcile(room) {
   advanceDisconnectedDj(room);
 }
 
-export function joinRoom(room, { nickname, playerId, profession } = {}) {
+export function joinRoom(room, { nickname, playerId } = {}) {
   room.updatedAt = Date.now();
   if (playerId) {
     const existing = findPlayer(room, playerId);
@@ -375,8 +360,6 @@ export function joinRoom(room, { nickname, playerId, profession } = {}) {
   }
   const parsed = normalizeNickname(nickname);
   if (parsed.error) return { error: parsed.error };
-  const job = professionOf(profession);
-  if (!job) return { error: "請先選一個職業。" };
   const player = {
     id: crypto.randomUUID(),
     nickname: parsed.nickname,
@@ -385,8 +368,6 @@ export function joinRoom(room, { nickname, playerId, profession } = {}) {
     ws: null,
   };
   room.players.push(player);
-  const granted = grantProfession(room, player, job.id);
-  if (granted.error) return granted;
   return { youId: player.id };
 }
 
@@ -682,6 +663,17 @@ export function applyAction(room, playerId, msg) {
   if (name === "cardBuy") return buyCard(room, playerId, msg.card);
   if (name === "cardRedeem") return redeemVoucher(room, playerId, msg.card);
   if (name === "cardCatch") return catchEffect(room, playerId, msg.targetId, msg.card);
+  if (name === "roleTake") return takeRole(room, playerId, msg.role);
+  if (name === "roleThrow") {
+    const thrown = throwHand(room, playerId, msg.hand);
+    if (thrown?.lostJiege) releaseJiege(room, thrown.lostJiege);
+    return thrown?.error ? thrown : { ok: true };
+  }
+  if (name === "roleAnswer") return answerJiege(room, playerId, Boolean(msg.refuse));
+  if (name === "roleEnd") return endOneEffect(room, playerId, msg.targetId, msg.card);
+  if (name === "roleClear") return clearAllEffects(room, playerId);
+  if (name === "roleReel") return rerollReel(room, playerId);
+  if (name === "roleSpin") return respinWheel(room, playerId);
   if (name === "cardSpin") return spinDraw(room, playerId);
   if (name === "cardSpinTake") return takeDraw(room, playerId);
   if (name === "profileSave") return saveProfile(room, playerId, msg);
@@ -771,7 +763,8 @@ export function serialize(room, viewerId) {
         scoreHideUntil: scoreHideUntil(room, player.id),
         connected: player.connected,
         fake: Boolean(player.fake),
-        drawsLeft: room.cards?.spinsLeft?.[player.id] == null ? startingSpins(player) : room.cards.spinsLeft[player.id],
+        drawsLeft: room.cards?.spinsLeft?.[player.id] == null ? 3 : room.cards.spinsLeft[player.id],
+        roleSpent: Boolean(player.bombardiroUsed),
         drawReadyAt: room.cards?.spinReady?.[player.id] || 0,
         profile: presentProfile(player),
       };
@@ -787,6 +780,7 @@ export function serialize(room, viewerId) {
       };
     }),
     cards: presentCards(room, viewerId),
+    ...presentRoleState(room, viewerId),
     prompt: promptFor(room, viewerId),
     game: game
       ? {
@@ -818,6 +812,8 @@ export function serialize(room, viewerId) {
           extraSpins: game.extraSpins || 0,
           wheelSongs: game.wheelSongs == null ? null : game.wheelSongs,
           wheelSpin: game.wheelSpin || 0,
+          ballerinaSpin: Boolean(game.ballerinaSpin),
+          tralalaReel: Boolean(game.tralalaReel),
           reel: game.reel == null ? null : game.reel,
           reelSpin: game.reelSpin || 0,
           ratings: visibleRatings(game, viewerId),
