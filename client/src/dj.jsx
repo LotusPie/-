@@ -37,7 +37,7 @@ const SONG_SLICES = [
 
 const WHEEL_STOPS = [1, 2, 3, 0];
 
-const REEL_ITEMS = [
+export const REEL_ITEMS = [
   "中文歌",
   "英文歌",
   "日文歌",

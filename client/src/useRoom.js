@@ -184,5 +184,8 @@ export function useRoom() {
     act(action) {
       send({ type: "action", ...action });
     },
+    dev(action) {
+      send({ type: "dev", ...action });
+    },
   };
 }

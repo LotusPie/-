@@ -387,6 +387,45 @@ function removeFromPrompt(game, playerId) {
   if (game.turnIndex >= game.turnOrder.length) game.done = true;
 }
 
+export function addFakePlayer(room) {
+  if (room.players.length >= MAX_PLAYERS) return { error: "這個房間滿了（最多 12 位旅伴）。" };
+  const used = new Set(room.players.map((player) => player.nickname));
+  let nickname = "假旅伴";
+  let n = 2;
+  while (used.has(nickname)) {
+    nickname = `假旅伴${n}`;
+    n += 1;
+  }
+  room.players.push({
+    id: crypto.randomUUID(),
+    nickname,
+    score: 0,
+    connected: true,
+    fake: true,
+    ws: null,
+  });
+  room.updatedAt = Date.now();
+  return { ok: true };
+}
+
+export function removeFakePlayer(room, playerId) {
+  const player = findPlayer(room, playerId);
+  if (!player?.fake) return { error: "只能移走假旅伴。" };
+  removePlayer(room, playerId);
+  return { ok: true };
+}
+
+export function setPlayerScore(room, playerId, score) {
+  const player = findPlayer(room, playerId);
+  if (!player) return { error: "請選一位旅伴。" };
+  if (typeof score !== "number" || !Number.isInteger(score) || score < -999 || score > 9999) {
+    return { error: "這個分數不行。" };
+  }
+  player.score = score;
+  room.updatedAt = Date.now();
+  return { ok: true };
+}
+
 export function removePlayer(room, playerId) {
   removeFromPrompt(room.game, playerId);
   const leaving = room.players.find((player) => player.id === playerId);
@@ -662,6 +701,9 @@ export function serialize(room, viewerId) {
         scoreHidden,
         scoreHideUntil: scoreHideUntil(room, player.id),
         connected: player.connected,
+        fake: Boolean(player.fake),
+        drawsLeft: room.cards?.spinsLeft?.[player.id] == null ? 3 : room.cards.spinsLeft[player.id],
+        drawReadyAt: room.cards?.spinReady?.[player.id] || 0,
         profile: presentProfile(player),
       };
     }),

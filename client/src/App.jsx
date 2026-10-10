@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { loadSession, roomCodeFromLocation, useRoom } from "./useRoom.js";
 import { DjGame } from "./dj.jsx";
 import { CardDesk } from "./cards.jsx";
+import { DevPanel } from "./dev.jsx";
 import { Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
 import { ProfilePage } from "./profile.jsx";
 
@@ -24,11 +25,26 @@ async function writeText(text) {
 }
 
 const PAGE_KEY = "on-the-trip-page";
+const DEV_KEY = "on-the-trip-dev";
 
-function readLocalPage() {
+function devEnabledNow() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("dev") === "1") {
+      localStorage.setItem(DEV_KEY, "1");
+      return true;
+    }
+    return localStorage.getItem(DEV_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function readLocalPage(devOn) {
   try {
     const value = sessionStorage.getItem(PAGE_KEY);
     if (value === "play" || value === "cards" || value === "rank" || value === "me") return value;
+    if (devOn && value === "dev") return "dev";
   } catch {
     // this browser is not keeping local page state
   }
@@ -38,17 +54,19 @@ function readLocalPage() {
 function roomLink(code) {
   const url = new URL(window.location.href);
   url.searchParams.set("room", code);
+  url.searchParams.delete("dev");
   url.hash = "";
   return url.toString();
 }
 
 export default function App() {
-  const { room, youId, error, setError, status, create, join, leave, act } = useRoom();
+  const { room, youId, error, setError, status, create, join, leave, act, dev } = useRoom();
+  const [devOn] = useState(devEnabledNow);
   const [nickname, setNickname] = useState(() => loadSession()?.nickname || "");
   const [linkCode] = useState(() => roomCodeFromLocation());
   const [code, setCode] = useState(linkCode);
   const [toast, setToast] = useState("");
-  const [page, setPage] = useState(readLocalPage);
+  const [page, setPage] = useState(() => readLocalPage(devEnabledNow()));
   const invited = !room && linkCode && code === linkCode ? linkCode : "";
 
   useEffect(() => {
@@ -64,7 +82,7 @@ export default function App() {
   }, [page]);
 
   function choosePage(next) {
-    if (next !== "play" && next !== "cards" && next !== "rank" && next !== "me") return;
+    if (next !== "play" && next !== "cards" && next !== "rank" && next !== "me" && !(devOn && next === "dev")) return;
     setPage(next);
   }
 
@@ -160,6 +178,7 @@ export default function App() {
           </section>
         ))}
       {page === "me" && <ProfilePage key={youId || "out"} room={room} youId={youId} act={act} />}
+      {devOn && page === "dev" && <DevPanel room={room} youId={youId} dev={dev} />}
       <footer>
         <p>私人房間 · 沒有帳號 · 不會公開列出</p>
         {room && (
@@ -173,7 +192,7 @@ export default function App() {
           </div>
         )}
       </footer>
-      <PageSwitch page={page} onChange={choosePage} />
+      <PageSwitch page={page} onChange={choosePage} dev={devOn} />
       {toast && <p className="toast">{toast}</p>}
     </div>
   );

@@ -182,15 +182,16 @@ export function Ranking({ ranking, youId, onOpen }) {
   );
 }
 
-export function PageSwitch({ page, onChange }) {
+export function PageSwitch({ page, onChange, dev = false }) {
   const items = [
     ["play", "如果我是迪爵"],
     ["cards", "我的卡牌"],
     ["rank", "積分排名"],
     ["me", "個人"],
   ];
+  if (dev) items.push(["dev", "開發"]);
   return (
-    <nav className="page-switch" aria-label="切換頁面">
+    <nav className={dev ? "page-switch has-dev" : "page-switch"} aria-label="切換頁面">
       {items.map(([id, label]) => (
         <button
           key={id}

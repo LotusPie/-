@@ -14,10 +14,12 @@ import {
 } from "./logic.mjs";
 import { expireDj } from "./dj.mjs";
 import { tickCardDraws, tickScoreHides } from "./cards.mjs";
+import { handleDev } from "./dev.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "../client/dist");
 const PORT = Number(process.env.PORT || 3001);
+const DEV_TOOLS = process.env.DEV_TOOLS === "1";
 const rooms = new Map();
 
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -239,6 +241,25 @@ function handle(ws, msg) {
       ws.roomCode = null;
     }
     send(ws, { type: "left" });
+    return;
+  }
+
+  if (msg.type === "dev") {
+    if (!DEV_TOOLS) {
+      send(ws, { type: "error", message: "開發工具沒有開。" });
+      return;
+    }
+    const room = rooms.get(ws.roomCode);
+    if (!room || !ws.playerId) {
+      send(ws, { type: "error", message: "你還沒進入房間。" });
+      return;
+    }
+    const result = handleDev(room, ws.playerId, msg);
+    if (result?.error) {
+      send(ws, { type: "error", message: result.error });
+      return;
+    }
+    broadcast(room);
     return;
   }
 

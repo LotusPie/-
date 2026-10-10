@@ -219,14 +219,7 @@ function applyCard(room, playerId, cardId, msg) {
   const self = findPlayer(room, playerId);
   const game = room.game?.kind === "dj" ? room.game : null;
 
-  if (cardId === "hide") {
-    if (!room.cards.hideUntil) room.cards.hideUntil = {};
-    const now = Date.now();
-    const current = room.cards.hideUntil[playerId];
-    const base = typeof current === "number" && current > now ? current : now;
-    room.cards.hideUntil[playerId] = base + HIDE_MS;
-    return { ok: true };
-  }
+  if (cardId === "hide") return stackHide(room, playerId);
 
   if (cardId === "swap") {
     const picked = otherOnline(room, playerId, msg?.targetId);
@@ -307,13 +300,7 @@ function applyCard(room, playerId, cardId, msg) {
     return { ok: true };
   }
 
-  if (cardId === "next") {
-    const target = connectedPlayer(room, msg?.targetId);
-    if (!target) return { error: "請選一位在線上的旅伴。" };
-    if (game) game.nextDjId = target.id;
-    else room.cards.pendingNext = target.id;
-    return { ok: true };
-  }
+  if (cardId === "next") return queueNextDj(room, msg?.targetId);
 
   if (cardId === "pass") {
     const myTurn = Boolean(game && game.djId === playerId && game.step !== "live");
@@ -455,6 +442,67 @@ export function presentCards(room, viewerId) {
     },
     draw: presentDraw(cards, viewerId),
   };
+}
+
+export function stackHide(room, playerId, now = Date.now()) {
+  if (!findPlayer(room, playerId)) return { error: "請選一位旅伴。" };
+  if (!room.cards) return { error: "現在不能用這張牌。" };
+  if (!room.cards.hideUntil) room.cards.hideUntil = {};
+  const current = room.cards.hideUntil[playerId];
+  const base = typeof current === "number" && current > now ? current : now;
+  room.cards.hideUntil[playerId] = base + HIDE_MS;
+  return { ok: true };
+}
+
+export function setHideExpiry(room, playerId, until) {
+  if (!findPlayer(room, playerId)) return { error: "請選一位旅伴。" };
+  if (!room.cards) return { error: "現在不能用這張牌。" };
+  if (!room.cards.hideUntil) room.cards.hideUntil = {};
+  room.cards.hideUntil[playerId] = until;
+  return { ok: true };
+}
+
+export function queueNextDj(room, targetId) {
+  const target = connectedPlayer(room, targetId);
+  if (!target) return { error: "請選一位在線上的旅伴。" };
+  const game = room.game?.kind === "dj" ? room.game : null;
+  if (game) game.nextDjId = target.id;
+  else room.cards.pendingNext = target.id;
+  return { ok: true };
+}
+
+export function giveCard(room, playerId, cardId) {
+  if (!findPlayer(room, playerId)) return { error: "請選一位旅伴。" };
+  if (!specOf(cardId)) return { error: "沒有這張牌。" };
+  const hand = handOf(room, playerId);
+  if (hand.length >= HAND_MAX) return { error: "手上已經有五張牌。" };
+  hand.push(cardId);
+  return { ok: true };
+}
+
+export function clearHand(room, playerId) {
+  if (!findPlayer(room, playerId)) return { error: "請選一位旅伴。" };
+  if (!room.cards) return { error: "現在不能用這張牌。" };
+  room.cards.hands[playerId] = [];
+  return { ok: true };
+}
+
+export function setFreeDraws(room, playerId, count = 3) {
+  if (!findPlayer(room, playerId)) return { error: "請選一位旅伴。" };
+  if (!room.cards) return { error: "現在不能抽牌。" };
+  ensureSpin(room.cards);
+  room.cards.spinsLeft[playerId] = count;
+  room.cards.spinReady[playerId] = 0;
+  return { ok: true };
+}
+
+export function setDrawCooldown(room, playerId, ms, now = Date.now()) {
+  if (!findPlayer(room, playerId)) return { error: "請選一位旅伴。" };
+  if (!room.cards) return { error: "現在不能抽牌。" };
+  ensureSpin(room.cards);
+  room.cards.spinsLeft[playerId] = 0;
+  room.cards.spinReady[playerId] = now + ms;
+  return { ok: true };
 }
 
 export function scoreHideUntil(room, playerId, now = Date.now()) {

@@ -7,6 +7,7 @@ import { WebSocket } from "ws";
 import { promptDeck, vibeDeck, scoreDeck } from "../server/decks.mjs";
 import { expireDj, parseYoutubeVideoId, REEL_ITEMS } from "../server/dj.mjs";
 import { HIDE_MS, tickCardDraws, tickScoreHides } from "../server/cards.mjs";
+import { handleDev } from "../server/dev.mjs";
 import { expectedPlayhead, planFollow } from "../client/src/watch-sync.js";
 import {
   applyAction,
@@ -111,6 +112,68 @@ function testLogic() {
   testDj();
   testCards();
   testProfile();
+  testDev();
+}
+
+function testDev() {
+  const { room, ids } = freshRoom(["阿凱", "小魚"]);
+  const [a, b] = ids;
+  assert.equal(handleDev(room, a, { name: "addFake" }).ok, true);
+  const fake = room.players.find((player) => player.fake);
+  assert.equal(fake.nickname, "假旅伴");
+  assert.equal(serialize(room, b).players.find((player) => player.id === fake.id).fake, true);
+  assert.match(handleDev(room, a, { name: "removeFake", targetId: a }).error, /假旅伴/);
+  assert.equal(handleDev(room, a, { name: "setScore", targetId: b, score: 12 }).ok, true);
+  assert.equal(scoreOf(room, b), 12);
+  assert.equal(handleDev(room, a, { name: "nextDj", targetId: fake.id }).ok, true);
+  assert.equal(room.cards.pendingNext, fake.id);
+  assert.equal(handleDev(room, a, { name: "hide", targetId: b }).ok, true);
+  const base = room.cards.hideUntil[b];
+  assert.equal(handleDev(room, a, { name: "hideStack", targetId: b }).ok, true);
+  assert.equal(room.cards.hideUntil[b], base + HIDE_MS);
+  assert.equal(serialize(room, a).ranking.find((row) => row.id === b), undefined);
+  assert.equal(handleDev(room, a, { name: "hideSoon", targetId: b }).ok, true);
+  assert.ok(room.cards.hideUntil[b] <= Date.now() + 10000);
+  assert.ok(room.cards.hideUntil[b] > Date.now() + 8000);
+  room.cards.hideUntil[b] = Date.now() - 1;
+  assert.equal(tickScoreHides(room), true);
+  assert.ok(serialize(room, a).ranking.some((row) => row.id === b));
+
+  applyAction(room, a, { name: "start", game: "dj" });
+  assert.equal(room.game.nextDjId, fake.id);
+  assert.equal(handleDev(room, a, { name: "wheel", songs: 0 }).ok, true);
+  assert.equal(room.game.wheelSongs, 0);
+  assert.equal(room.game.step, "pick");
+  assert.equal(applyAction(room, a, { name: "djMode", songs: 0 }).ok, true);
+  assert.equal(room.game.djId, fake.id);
+  assert.equal(room.game.step, "pick");
+  assert.equal(room.game.reel, null);
+
+  assert.equal(handleDev(room, fake.id, { name: "wheel", songs: 2 }).ok, true);
+  assert.equal(applyAction(room, fake.id, { name: "djMode", songs: 2 }).ok, true);
+  assert.equal(room.game.step, "reel");
+  assert.equal(handleDev(room, fake.id, { name: "reel", index: 6 }).ok, true);
+  assert.equal(room.game.reel, 6);
+  assert.equal(applyAction(room, fake.id, { name: "djReelLock" }).ok, true);
+  assert.equal(room.game.step, "enter");
+  assert.equal(serialize(room, a).game.reel, 6);
+
+  assert.equal(handleDev(room, a, { name: "giveCard", targetId: a, card: "peek" }).ok, true);
+  assert.deepEqual(room.cards.hands[a], ["peek"]);
+  assert.equal(handleDev(room, a, { name: "clearHand", targetId: a }).ok, true);
+  assert.deepEqual(room.cards.hands[a], []);
+  room.cards.spinsLeft[a] = 0;
+  room.cards.spinReady[a] = Date.now() + 60_000;
+  assert.equal(handleDev(room, a, { name: "freeDraws", targetId: a }).ok, true);
+  assert.equal(room.cards.spinsLeft[a], 3);
+  assert.equal(room.cards.spinReady[a], 0);
+  assert.equal(handleDev(room, a, { name: "drawSoon", targetId: a }).ok, true);
+  assert.equal(room.cards.spinsLeft[a], 0);
+  assert.ok(room.cards.spinReady[a] > Date.now() + 8000);
+  assert.equal(handleDev(room, a, { name: "drawReady", targetId: a }).ok, true);
+  assert.ok(room.cards.spinReady[a] <= Date.now());
+  assert.equal(handleDev(room, a, { name: "removeFake", targetId: fake.id }).ok, true);
+  assert.equal(room.players.some((player) => player.fake), false);
 }
 
 function testDj() {
@@ -598,7 +661,7 @@ async function testServer() {
   const port = 17651;
   const child = spawn(process.execPath, ["server/index.mjs"], {
     cwd: root,
-    env: { ...process.env, PORT: String(port) },
+    env: { ...process.env, PORT: String(port), DEV_TOOLS: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let logs = "";
@@ -638,9 +701,12 @@ async function testServer() {
     assert.equal(joined.room.players.map((player) => player.nickname).join(","), "阿凱,小魚");
     const hostSawGuest = await waitUntil(host.states, (msg) => msg.room?.players?.length === 2);
     assert.equal(hostSawGuest.room.code, code);
+    host.send({ type: "dev", name: "addFake" });
+    const rejectedDev = await waitUntil(host.states, (msg) => msg.type === "error" && /開發工具/.test(msg.message || ""));
+    assert.match(rejectedDev.message, /開發工具沒有開/);
 
     host.send({ type: "action", name: "start", game: "prompt" });
-    const rejectedGame = await waitUntil(host.states, (msg) => msg.type === "error");
+    const rejectedGame = await waitUntil(host.states, (msg) => msg.type === "error" && /沒有這個遊戲/.test(msg.message || ""));
     assert.match(rejectedGame.message, /沒有這個遊戲/);
 
     const hostId = created.youId;

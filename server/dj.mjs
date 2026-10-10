@@ -332,6 +332,37 @@ export function handleDjAction(room, playerId, msg) {
   return { error: "還沒有這個動作。" };
 }
 
+export function forceWheelStop(room, songs) {
+  const game = room.game;
+  if (!game || game.kind !== "dj") return { error: "現在不是如果我是迪爵。" };
+  if (game.step !== "pick") return { error: "現在還不能轉。" };
+  if (songs !== 0 && songs !== 1 && songs !== 2 && songs !== 3) return { error: "沒有這個首數。" };
+  game.forcedMode = null;
+  game.extraSpins = 0;
+  if (room.cards) room.cards.pendingMode = null;
+  game.wheelSongs = songs;
+  game.wheelSpin = (game.wheelSpin || 0) + 1;
+  return { ok: true };
+}
+
+export function forceReel(room, index) {
+  const game = room.game;
+  if (!game || game.kind !== "dj") return { error: "現在不是如果我是迪爵。" };
+  if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= REEL_ITEMS.length) {
+    return { error: "沒有這個條件。" };
+  }
+  if (game.step === "reel") {
+    game.reel = index;
+    game.reelSpin = (game.reelSpin || 0) + 1;
+    return { ok: true };
+  }
+  if (game.step === "enter" || game.step === "live") {
+    game.reel = index;
+    return { ok: true };
+  }
+  return { error: "現在還不能轉。" };
+}
+
 export function advanceDisconnectedDj(room) {
   const game = room.game;
   if (!game || game.kind !== "dj" || !game.djId) return;

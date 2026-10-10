@@ -1270,6 +1270,86 @@ html {
   color: white;
 }
 
+.page-switch.has-dev {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.dev-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 12px;
+}
+
+.dev-panel h2 {
+  font-size: 1.15rem;
+}
+
+.dev-panel button {
+  min-height: 48px;
+}
+
+.dev-picks,
+.dev-reel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dev-picks button,
+.dev-reel button {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 7.5rem;
+}
+
+.dev-reel button {
+  flex-basis: calc(50% - 8px);
+}
+
+.dev-score {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+}
+
+.dev-score label {
+  flex: 1;
+}
+
+.dev-score input {
+  width: 100%;
+  min-height: 48px;
+  font-size: max(16px, 1.1rem);
+}
+
+.dev-state {
+  background: var(--card);
+  border: 2px solid var(--ink);
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+.dev-state summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dev-state dl {
+  margin: 8px 0 0;
+}
+
+.dev-state dt {
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.dev-state dd {
+  margin: 0;
+}
+
 .score-page h2 {
   font-size: clamp(1.6rem, 6vw, 2rem);
 }

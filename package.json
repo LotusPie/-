@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "node server/index.mjs",
+    "dev:server": "DEV_TOOLS=1 node server/index.mjs",
     "dev:client": "vite --config client/vite.config.js",
     "build": "vite build --config client/vite.config.js",
     "start": "node server/index.mjs",
