@@ -3,6 +3,21 @@ import { clearRoundCards, clearSongCards, skipPassed, songLimit, takeForcedMode,
 const SONG_MAX = 80;
 const ARTIST_MAX = 40;
 
+export const REEL_ITEMS = [
+  "中文歌",
+  "英文歌",
+  "日文歌",
+  "韓文歌",
+  "AI 做的歌",
+  "原唱",
+  "翻唱",
+  "很舊的歌",
+  "最近的歌",
+  "慢歌",
+  "快歌",
+  "古典樂",
+];
+
 const PLAY_STATES = new Set(["unstarted", "playing", "paused", "buffering", "ended", "cued", "error"]);
 
 const HOSTS = new Set([
@@ -88,6 +103,8 @@ function freshRound(room, game, djId, round) {
     songs: null,
     wheelSongs: null,
     wheelSpin: 0,
+    reel: null,
+    reelSpin: 0,
     extra: false,
     extraSpins: 0,
     shield: false,
@@ -195,8 +212,9 @@ export function handleDjAction(room, playerId, msg) {
     if ((game.wheelSpin || 0) > 0 && !(game.extraSpins > 0)) return { error: "轉過了。" };
     if ((game.wheelSpin || 0) > 0) game.extraSpins -= 1;
     const songs = takeForcedMode(room, game, msg.songs);
-    if (!songs) return { error: "沒有這個首數。" };
-    game.wheelSongs = songs;
+    if (songs) game.wheelSongs = songs;
+    else if (msg.songs === 0) game.wheelSongs = 0;
+    else return { error: "沒有這個首數。" };
     game.wheelSpin = (game.wheelSpin || 0) + 1;
     return { ok: true };
   }
@@ -206,9 +224,35 @@ export function handleDjAction(room, playerId, msg) {
     if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
     if ((game.wheelSpin || 0) > 0 && (game.extraSpins || 0) > 0) return { error: "還可以再轉一次。" };
     const songs = takeForcedMode(room, game, msg.songs);
-    if (!songs) return { error: "沒有這個首數。" };
-    game.songs = songs;
-    game.mode = songs === 1 ? "own" : "playlist";
+    if (songs) {
+      game.songs = songs;
+      game.mode = songs === 1 ? "own" : "playlist";
+      game.step = "reel";
+      game.reel = null;
+      game.reelSpin = 0;
+      return { ok: true };
+    }
+    if (msg.songs === 0) return advanceDj(room, "served");
+    return { error: "沒有這個首數。" };
+  }
+
+  if (name === "djReel") {
+    if (game.step !== "reel") return { error: "現在還不能轉。" };
+    if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
+    if ((game.reelSpin || 0) > 0) return { error: "轉過了。" };
+    const index = msg.index;
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= REEL_ITEMS.length) {
+      return { error: "沒有這個條件。" };
+    }
+    game.reel = index;
+    game.reelSpin = (game.reelSpin || 0) + 1;
+    return { ok: true };
+  }
+
+  if (name === "djReelLock") {
+    if (game.step !== "reel") return { error: "現在還不能鎖定。" };
+    if (playerId !== game.djId) return { error: "這輪是另一位迪爵。" };
+    if (game.reel == null || !(game.reelSpin > 0)) return { error: "拉霸機還沒停。" };
     game.step = "enter";
     return { ok: true };
   }

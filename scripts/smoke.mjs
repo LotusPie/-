@@ -5,8 +5,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { promptDeck, vibeDeck, scoreDeck } from "../server/decks.mjs";
-import { expireDj, parseYoutubeVideoId } from "../server/dj.mjs";
-import { tickCardDraws } from "../server/cards.mjs";
+import { expireDj, parseYoutubeVideoId, REEL_ITEMS } from "../server/dj.mjs";
+import { HIDE_MS, tickCardDraws, tickScoreHides } from "../server/cards.mjs";
 import { expectedPlayhead, planFollow } from "../client/src/watch-sync.js";
 import {
   applyAction,
@@ -33,6 +33,14 @@ function freshRoom(names) {
     ids.push(joined.youId);
   }
   return { room: created.room, ids };
+}
+
+function lockReel(room, id, index = 0) {
+  assert.equal(room.game.step, "reel");
+  assert.equal(applyAction(room, id, { name: "djReel", index }).ok, true);
+  assert.equal(room.game.reel, index);
+  assert.equal(applyAction(room, id, { name: "djReelLock" }).ok, true);
+  assert.equal(room.game.step, "enter");
 }
 
 function testDecksAndCopy() {
@@ -135,9 +143,16 @@ function testDj() {
 
   assert.equal(applyAction(room, b, { name: "djMode", songs: 1 }).ok, true);
   assert.match(applyAction(room, b, { name: "djBack" }).error, /不能重選/);
-  assert.equal(room.game.step, "enter");
+  assert.equal(room.game.step, "reel");
   assert.equal(room.game.mode, "own");
   assert.equal(room.game.songs, 1);
+  assert.match(applyAction(room, b, { name: "djCue", url: watch }).error, /還不能播/);
+  assert.match(applyAction(room, a, { name: "djReel", index: 1 }).error, /另一位迪爵/);
+  assert.match(applyAction(room, b, { name: "djReel", index: 1.5 }).error, /條件/);
+  assert.match(applyAction(room, b, { name: "djReel", index: 12 }).error, /條件/);
+  lockReel(room, b, 4);
+  assert.equal(serialize(room, a).game.reel, 4);
+  assert.equal(REEL_ITEMS[4], "AI 做的歌");
   assert.match(applyAction(room, b, { name: "djCue", url: "https://example.com/a" }).error, /連結/);
   assert.equal(applyAction(room, b, { name: "djCue", url: watch }).ok, true);
   assert.equal(room.game.step, "live");
@@ -189,6 +204,7 @@ function testDj() {
   assert.equal(room.game.djId, c);
 
   assert.equal(applyAction(room, c, { name: "djMode", songs: 3 }).ok, true);
+  lockReel(room, c, 0);
   assert.equal(applyAction(room, c, { name: "djCue", url: music }).ok, true);
   assert.equal(room.game.step, "live");
   assert.equal(room.game.videoId, "dQw4w9WgXcQ");
@@ -225,6 +241,7 @@ function testDj() {
   const timed = freshRoom(["阿凱", "小魚"]);
   applyAction(timed.room, timed.ids[0], { name: "start", game: "dj" });
   applyAction(timed.room, timed.ids[0], { name: "djMode", songs: 3 });
+  lockReel(timed.room, timed.ids[0]);
   applyAction(timed.room, timed.ids[0], { name: "djCue", url: watch });
   assert.equal(timed.room.game.endsAt, null);
   assert.equal(timed.room.game.songCount, 1);
@@ -236,6 +253,7 @@ function testDj() {
   const mix = freshRoom(["阿凱", "小魚"]);
   applyAction(mix.room, mix.ids[0], { name: "start", game: "dj" });
   applyAction(mix.room, mix.ids[0], { name: "djMode", songs: 3 });
+  lockReel(mix.room, mix.ids[0]);
   applyAction(mix.room, mix.ids[0], { name: "djCue", url: music });
   assert.equal(
     applyAction(mix.room, mix.ids[0], { name: "djSync", videoId: "jNQXAC9IVRw", title: "第二首", playState: "playing" }).ok,
@@ -267,6 +285,7 @@ function testDj() {
   assert.equal(applyAction(two.room, two.ids[0], { name: "djMode", songs: 2 }).ok, true);
   assert.equal(two.room.game.mode, "playlist");
   assert.equal(two.room.game.songs, 2);
+  lockReel(two.room, two.ids[0]);
   applyAction(two.room, two.ids[0], { name: "djCue", url: music });
   assert.equal(serialize(two.room, two.ids[1]).game.songLimit, 2);
   assert.equal(
@@ -293,9 +312,24 @@ function testDj() {
   assert.equal(again.room.game.extraSpins, 0);
   assert.match(applyAction(again.room, again.ids[0], { name: "djSpin", songs: 4 }).error, /首數|轉過了/);
 
+  const skipped = freshRoom(["阿凱", "小魚"]);
+  applyAction(skipped.room, skipped.ids[0], { name: "start", game: "dj" });
+  assert.equal(applyAction(skipped.room, skipped.ids[0], { name: "djSpin", songs: 0 }).ok, true);
+  assert.equal(skipped.room.game.wheelSongs, 0);
+  assert.equal(serialize(skipped.room, skipped.ids[1]).game.wheelSongs, 0);
+  assert.equal(skipped.room.game.step, "pick");
+  assert.match(applyAction(skipped.room, skipped.ids[1], { name: "djMode", songs: 0 }).error, /另一位迪爵/);
+  assert.equal(applyAction(skipped.room, skipped.ids[0], { name: "djMode", songs: 0 }).ok, true);
+  assert.equal(skipped.room.game.step, "pick");
+  assert.equal(skipped.room.game.djId, skipped.ids[1]);
+  assert.ok(skipped.room.game.served.includes(skipped.ids[0]));
+  assert.equal(skipped.room.game.wheelSongs, null);
+  assert.equal(skipped.room.game.reel, null);
+
   const low = freshRoom(["阿凱", "小魚"]);
   applyAction(low.room, low.ids[0], { name: "start", game: "dj" });
   applyAction(low.room, low.ids[0], { name: "djMode", songs: 1 });
+  lockReel(low.room, low.ids[0]);
   applyAction(low.room, low.ids[0], { name: "djCue", url: watch });
   applyAction(low.room, low.ids[1], { name: "djRate", value: -2 });
   assert.equal(scoreOf(low.room, low.ids[0]), -2);
@@ -326,21 +360,81 @@ function testCards() {
   hide.room.players[0].score = 8;
   hide.room.cards.hands[hide.ids[0]] = ["hide"];
   assert.equal(applyAction(hide.room, hide.ids[0], { name: "cardPlay", card: "hide" }).ok, true);
+  const until = hide.room.cards.hideUntil[hide.ids[0]];
+  assert.ok(until > Date.now() + HIDE_MS - 2000);
+  assert.ok(until <= Date.now() + HIDE_MS + 50);
   const masked = serialize(hide.room, hide.ids[1]);
   const hiddenRow = masked.players.find((player) => player.id === hide.ids[0]);
   assert.equal(hiddenRow.scoreHidden, true);
   assert.equal(hiddenRow.score, null);
+  assert.equal(hiddenRow.scoreHideUntil, until);
   const selfRow = serialize(hide.room, hide.ids[0]).players.find((player) => player.id === hide.ids[0]);
   assert.equal(selfRow.score, 8);
   assert.equal(selfRow.scoreHidden, false);
-  assert.equal(masked.ranking.find((row) => row.id === hide.ids[0]).score, null);
-  assert.equal(masked.ranking.find((row) => row.id === hide.ids[0]).scoreHidden, true);
+  assert.equal(selfRow.scoreHideUntil, until);
+  assert.equal(masked.ranking.find((row) => row.id === hide.ids[0]), undefined);
+  assert.deepEqual(
+    masked.ranking.map((row) => [row.id, row.rank]),
+    [[hide.ids[1], 1]],
+  );
+  assert.deepEqual(
+    serialize(hide.room, hide.ids[0]).ranking.map((row) => [row.id, row.rank]),
+    [[hide.ids[1], 1]],
+  );
+  const board = freshRoom(["阿凱", "小魚", "阿德"]);
+  board.room.players[0].score = 9;
+  board.room.players[1].score = 5;
+  board.room.players[2].score = 1;
+  board.room.cards.hands[board.ids[1]] = ["hide"];
+  assert.equal(applyAction(board.room, board.ids[1], { name: "cardPlay", card: "hide" }).ok, true);
+  const visible = serialize(board.room, board.ids[2]).ranking.map((row) => [row.nickname, row.rank, row.score]);
+  assert.deepEqual(visible, [
+    ["阿凱", 1, 9],
+    ["阿德", 2, 1],
+  ]);
+  assert.deepEqual(
+    serialize(board.room, board.ids[1]).ranking.map((row) => row.nickname),
+    ["阿凱", "阿德"],
+  );
+  applyAction(hide.room, hide.ids[0], { name: "start", game: "dj" });
+  applyAction(hide.room, hide.ids[0], { name: "djSkip" });
+  assert.equal(hide.room.cards.hideUntil[hide.ids[0]], until);
+  assert.equal(serialize(hide.room, hide.ids[1]).players.find((player) => player.id === hide.ids[0]).score, null);
+  const base = Date.now() + 90 * 60 * 1000;
+  hide.room.cards.hideUntil[hide.ids[0]] = base;
+  hide.room.cards.hands[hide.ids[0]] = ["hide"];
+  assert.equal(applyAction(hide.room, hide.ids[0], { name: "cardPlay", card: "hide" }).ok, true);
+  assert.equal(hide.room.cards.hideUntil[hide.ids[0]], base + HIDE_MS);
+  hide.room.cards.hideUntil[hide.ids[0]] = Date.now() - 1;
+  assert.equal(tickScoreHides(hide.room), true);
+  const shown = serialize(hide.room, hide.ids[1]).players.find((player) => player.id === hide.ids[0]);
+  assert.equal(shown.scoreHidden, false);
+  assert.equal(shown.score, 8);
+  assert.equal(shown.scoreHideUntil, null);
+  assert.deepEqual(
+    serialize(hide.room, hide.ids[0]).ranking.map((row) => [row.id, row.rank]),
+    [
+      [hide.ids[0], 1],
+      [hide.ids[1], 2],
+    ],
+  );
+  board.room.cards.hideUntil[board.ids[1]] = Date.now() - 1;
+  assert.equal(tickScoreHides(board.room), true);
+  assert.deepEqual(
+    serialize(board.room, board.ids[1]).ranking.map((row) => [row.nickname, row.rank]),
+    [
+      ["阿凱", 1],
+      ["小魚", 2],
+      ["阿德", 3],
+    ],
+  );
 
   const shield = freshRoom(["阿凱", "小魚"]);
   applyAction(shield.room, shield.ids[0], { name: "start", game: "dj" });
   shield.room.cards.hands[shield.ids[0]] = ["shield"];
   assert.equal(applyAction(shield.room, shield.ids[0], { name: "cardPlay", card: "shield" }).ok, true);
   applyAction(shield.room, shield.ids[0], { name: "djMode", songs: 1 });
+  lockReel(shield.room, shield.ids[0]);
   applyAction(shield.room, shield.ids[0], { name: "djCue", url: watch });
   assert.equal(applyAction(shield.room, shield.ids[1], { name: "djRate", value: -2 }).ok, true);
   assert.equal(scoreOf(shield.room, shield.ids[0]), 0);
@@ -350,6 +444,7 @@ function testCards() {
   const block = freshRoom(["阿凱", "小魚"]);
   applyAction(block.room, block.ids[0], { name: "start", game: "dj" });
   applyAction(block.room, block.ids[0], { name: "djMode", songs: 1 });
+  lockReel(block.room, block.ids[0]);
   applyAction(block.room, block.ids[0], { name: "djCue", url: watch });
   block.room.cards.hands[block.ids[1]] = ["block"];
   assert.equal(applyAction(block.room, block.ids[1], { name: "cardPlay", card: "block" }).ok, true);
@@ -374,6 +469,7 @@ function testCards() {
   extra.room.cards.hands[extra.ids[0]] = ["extra"];
   assert.equal(applyAction(extra.room, extra.ids[0], { name: "cardPlay", card: "extra" }).ok, true);
   applyAction(extra.room, extra.ids[0], { name: "djMode", songs: 3 });
+  lockReel(extra.room, extra.ids[0]);
   applyAction(extra.room, extra.ids[0], { name: "djCue", url: "https://music.youtube.com/watch?v=dQw4w9WgXcQ" });
   assert.equal(serialize(extra.room, extra.ids[1]).game.songLimit, 4);
   const videos = ["jNQXAC9IVRw", "M7lc1UVf-VE", "abcdefghijk", "bbbbbbbbbbb"];
@@ -561,7 +657,11 @@ async function testServer() {
     const listenerId = firstListener === host ? hostId : guestId;
     const listenerBeforeOwn = djStart.room.players.find((player) => player.id === listenerId).score;
     firstDj.send({ type: "action", name: "djMode", songs: 1 });
-    await waitUntil(firstDj.states, (msg) => msg.room?.game?.step === "enter");
+    await waitUntil(firstDj.states, (msg) => msg.room?.game?.step === "reel");
+    firstDj.send({ type: "action", name: "djReel", index: 2 });
+    await waitUntil(firstListener.states, (msg) => msg.room?.game?.reel === 2 && msg.room.game.step === "reel");
+    firstDj.send({ type: "action", name: "djReelLock" });
+    await waitUntil(firstDj.states, (msg) => msg.room?.game?.step === "enter" && msg.room.game.reel === 2);
     firstDj.send({ type: "action", name: "djCue", url: "https://www.youtube.com/watch?v=M7lc1UVf-VE" });
     await waitUntil(firstListener.states, (msg) => msg.room?.game?.videoId === "M7lc1UVf-VE" && msg.room.game.step === "live");
     firstDj.send({
@@ -597,6 +697,10 @@ async function testServer() {
     const listenerBefore = picked.room.players.find((player) => player.id === playlistListenerId).score;
     const djBefore = picked.room.players.find((player) => player.id === playlistDjId).score;
     playlistDj.send({ type: "action", name: "djMode", songs: 3 });
+    await waitUntil(playlistDj.states, (msg) => msg.room?.game?.step === "reel" && msg.room.game.djId === playlistDjId);
+    playlistDj.send({ type: "action", name: "djReel", index: 11 });
+    await waitUntil(playlistListener.states, (msg) => msg.room?.game?.reel === 11);
+    playlistDj.send({ type: "action", name: "djReelLock" });
     await waitUntil(playlistDj.states, (msg) => msg.room?.game?.step === "enter" && msg.room.game.djId === playlistDjId);
     playlistDj.send({ type: "action", name: "djCue", url: "https://music.youtube.com/watch?v=dQw4w9WgXcQ" });
     await waitUntil(

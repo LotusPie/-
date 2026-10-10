@@ -25,15 +25,42 @@ function loadYoutubeApi() {
 }
 
 const WHEEL_MS = 2500;
+const REEL_MS = 2600;
+const REEL_ROW = 56;
 
 const SONG_SLICES = [
-  { songs: 1, label: "一首歌", mid: 60 },
-  { songs: 2, label: "二首歌", mid: 180 },
-  { songs: 3, label: "三首歌", mid: 300 },
+  { songs: 1, label: "一首歌", mid: 45 },
+  { songs: 2, label: "二首歌", mid: 135 },
+  { songs: 3, label: "三首歌", mid: 225 },
+  { songs: 0, label: "此輪跳過", mid: 315 },
+];
+
+const WHEEL_STOPS = [1, 2, 3, 0];
+
+const REEL_ITEMS = [
+  "中文歌",
+  "英文歌",
+  "日文歌",
+  "韓文歌",
+  "AI 做的歌",
+  "原唱",
+  "翻唱",
+  "很舊的歌",
+  "最近的歌",
+  "慢歌",
+  "快歌",
+  "古典樂",
 ];
 
 function songLabel(count) {
   return SONG_SLICES.find((slice) => slice.songs === count)?.label || "";
+}
+
+function reducedMotion() {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 function ModeWheel({ wheelSongs, wheelSpin }) {
@@ -74,6 +101,47 @@ function ModeWheel({ wheelSongs, wheelSpin }) {
         <div className="wheel-hub" />
       </div>
     </div>
+  );
+}
+
+function SlotReel({ index, spin }) {
+  const loops = useRef(0);
+  const [shift, setShift] = useState(0);
+  useEffect(() => {
+    if (!spin || index == null) {
+      loops.current = 0;
+      setShift(0);
+      return;
+    }
+    const reduce = reducedMotion();
+    loops.current += reduce ? 0 : 5;
+    setShift(loops.current * REEL_ITEMS.length + index);
+  }, [spin, index]);
+  const count = Math.max(REEL_ITEMS.length, shift + 1);
+  const cells = [];
+  for (let i = 0; i < count; i += 1) cells.push(REEL_ITEMS[i % REEL_ITEMS.length]);
+  return (
+    <div className="reel-wrap">
+      <div className="reel-window" role="img" aria-label={index == null ? "拉霸機" : REEL_ITEMS[index]}>
+        <div className="reel-strip" style={{ transform: `translateY(${REEL_ROW - shift * REEL_ROW}px)` }}>
+          {cells.map((label, i) => (
+            <div key={i} className={i === shift ? "reel-cell is-landed" : "reel-cell"}>
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Constraint({ index }) {
+  if (index == null || !REEL_ITEMS[index]) return null;
+  return (
+    <p className="reel-result" aria-live="polite">
+      <span className="kicker">這一輪</span>
+      <strong>{REEL_ITEMS[index]}</strong>
+    </p>
   );
 }
 
@@ -585,15 +653,24 @@ export function DjGame({ room, youId, act }) {
   }, [game.step]);
 
   useEffect(() => {
-    if (!mine || game.step !== "pick" || !game.wheelSpin || !game.wheelSongs) return undefined;
+    if (!mine || game.step !== "pick" || !game.wheelSpin || game.wheelSongs == null) return undefined;
     if ((game.extraSpins || 0) > 0) return undefined;
     const songs = game.wheelSongs;
-    const reduce =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = setTimeout(() => actRef.current({ name: "djMode", songs }), reduce ? 0 : WHEEL_MS);
+    const timer = setTimeout(() => actRef.current({ name: "djMode", songs }), reducedMotion() ? 0 : WHEEL_MS);
     return () => clearTimeout(timer);
   }, [mine, game.step, game.wheelSpin, game.wheelSongs, game.extraSpins]);
+
+  useEffect(() => {
+    if (!mine || game.step !== "reel" || game.reelSpin) return undefined;
+    const index = Math.floor(Math.random() * REEL_ITEMS.length);
+    actRef.current({ name: "djReel", index });
+  }, [mine, game.step, game.reelSpin]);
+
+  useEffect(() => {
+    if (!mine || game.step !== "reel" || !game.reelSpin || game.reel == null) return undefined;
+    const timer = setTimeout(() => actRef.current({ name: "djReelLock" }), reducedMotion() ? 0 : REEL_MS);
+    return () => clearTimeout(timer);
+  }, [mine, game.step, game.reelSpin, game.reel]);
 
   return (
     <div className="dj-layout dj-game">
@@ -609,14 +686,23 @@ export function DjGame({ room, youId, act }) {
       {game.step === "pick" && (
         <section className="stack">
           <ModeWheel wheelSongs={game.wheelSongs} wheelSpin={game.wheelSpin || 0} />
-          <p className="turn-line">{game.wheelSongs ? songLabel(game.wheelSongs) : "一首歌、二首歌、三首歌，機會一樣。"}</p>
+          {game.wheelSongs === 0 ? (
+            <p className="reel-result" aria-live="polite">
+              <span className="kicker">轉盤</span>
+              <strong>此輪跳過</strong>
+            </p>
+          ) : (
+            <p className="turn-line">
+              {game.wheelSongs ? songLabel(game.wheelSongs) : "一首歌、二首歌、三首歌、此輪跳過，機會一樣。"}
+            </p>
+          )}
           {mine ? (
             <button
               className="primary xl"
               type="button"
               disabled={(game.wheelSpin || 0) > 0 && !(game.extraSpins > 0)}
               onClick={() => {
-                const songs = 1 + Math.floor(Math.random() * 3);
+                const songs = WHEEL_STOPS[Math.floor(Math.random() * WHEEL_STOPS.length)];
                 act({ name: "djSpin", songs });
               }}
             >
@@ -634,9 +720,18 @@ export function DjGame({ room, youId, act }) {
         </section>
       )}
 
+      {game.step === "reel" && (
+        <section className="stack">
+          <p className="turn-line">{songLabel(game.songs) || "一首歌"}</p>
+          <SlotReel index={game.reel} spin={game.reelSpin || 0} />
+          <p className="turn-line">{game.reel == null ? "拉霸機轉著" : REEL_ITEMS[game.reel]}</p>
+        </section>
+      )}
+
       {game.step === "enter" && (
         <section className="stack">
           <p className="turn-line">{songLabel(game.songs) || (game.mode === "playlist" ? "接著播" : "一首歌")}</p>
+          <Constraint index={game.reel} />
           {mine ? (
             <form
               className="stack"
@@ -755,6 +850,7 @@ function Live({ room, youId, act, mine }) {
   return (
     <section className="stack">
       {showCount ? <p className="song-count">第 {game.songCount || 1} / {limit} 首</p> : null}
+      <Constraint index={game.reel} />
       <RatingRows room={room} game={game} />
       <NowPlaying song={game.song} />
       <p className="turn-line">大家一起看這支影片</p>

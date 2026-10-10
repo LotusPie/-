@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CardFace } from "./card-faces.jsx";
-import { nameOf, playerOf } from "./play.jsx";
+import { CooldownText, nameOf, playerOf, remainText } from "./play.jsx";
 import { PersonFace } from "./profile.jsx";
 
 function signed(value) {
@@ -16,8 +16,8 @@ function modeName(mode) {
 
 const CARD_COPY = {
   hide: {
-    short: "先把你的分數藏起來",
-    detail: "用了之後，這一輪其他人看你的分數是問號，你自己還看得到。下一位迪爵上台就恢復。",
+    short: "把你的分數藏兩小時",
+    detail: "用了之後兩小時內，積分排名不會列出你，大家看到的排名一樣。分數還藏著的時候再使用一次，會在你剩下的時間上再加兩小時。時間到了，你回到排名。",
   },
   swap: {
     short: "跟一個人對調分數",
@@ -89,16 +89,6 @@ function wheelBackground(slices) {
     return colors[index % colors.length] + " " + start + "deg " + cursor + "deg";
   });
   return "conic-gradient(" + stops.join(", ") + ")";
-}
-
-function remainText(ms) {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  if (hours > 0) return hours + " 小時 " + minutes + " 分";
-  if (minutes > 0) return minutes + " 分 " + seconds + " 秒";
-  return seconds + " 秒";
 }
 
 function DrawWheel({ draw, act, error, handFull }) {
@@ -208,6 +198,7 @@ export function CardDesk({ room, youId, act, error }) {
   if (cards.doubled) notes.push("你的下一筆評分會算兩次");
 
   const online = room.players.filter((player) => player.connected);
+  const mine = room.players.find((player) => player.id === youId);
   const others = online.filter((player) => player.id !== youId);
   const pendingSpec = pending ? specOf(pending) : null;
 
@@ -318,6 +309,7 @@ export function CardDesk({ room, youId, act, error }) {
           </span>
         </p>
       ) : null}
+      {mine?.scoreHideUntil ? <CooldownText until={mine.scoreHideUntil} /> : null}
       {notes.length ? (
         <ul className="card-notes">
           {notes.map((line) => (

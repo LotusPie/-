@@ -13,7 +13,7 @@ import {
   normalizeCode,
 } from "./logic.mjs";
 import { expireDj } from "./dj.mjs";
-import { tickCardDraws } from "./cards.mjs";
+import { tickCardDraws, tickScoreHides } from "./cards.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "../client/dist");
@@ -275,7 +275,8 @@ setInterval(() => {
   for (const room of rooms.values()) {
     const expired = expireDj(room);
     const drawn = tickCardDraws(room);
-    if (expired || drawn) broadcast(room);
+    const revealed = tickScoreHides(room);
+    if (expired || drawn || revealed) broadcast(room);
   }
 }, 1000).unref();
 

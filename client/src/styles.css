@@ -440,7 +440,12 @@ button.together {
   aspect-ratio: 1;
   border-radius: 50%;
   border: 4px solid var(--ink);
-  background: conic-gradient(var(--terra) 0 120deg, var(--sea) 120deg 240deg, var(--amber) 240deg 360deg);
+  background: conic-gradient(
+    var(--terra) 0 90deg,
+    var(--sea) 90deg 180deg,
+    var(--amber) 180deg 270deg,
+    #5c3d55 270deg 360deg
+  );
   box-shadow: var(--shadow);
   position: relative;
   transition: transform 2.4s cubic-bezier(0.15, 0.75, 0.1, 1);
@@ -463,8 +468,73 @@ button.together {
 
 .wheel-label {
   left: 50%;
-  max-width: 30%;
-  font-size: 0.85rem;
+  max-width: 28%;
+  font-size: 0.78rem;
+}
+
+.reel-wrap {
+  width: min(280px, 100%);
+  margin: 4px auto 0;
+}
+
+.reel-window {
+  position: relative;
+  height: 168px;
+  overflow: hidden;
+  border: 4px solid var(--ink);
+  border-radius: 22px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.reel-window::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 8px;
+  right: 8px;
+  top: 56px;
+  height: 56px;
+  border: 3px solid var(--terra);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.reel-strip {
+  transition: transform 2.6s cubic-bezier(0.15, 0.75, 0.1, 1);
+}
+
+.reel-cell {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  font-weight: 700;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.reel-cell.is-landed {
+  color: var(--ink);
+}
+
+.reel-result {
+  margin: 0;
+  background: white;
+  border-radius: 22px;
+  border-top: 8px solid var(--terra);
+  padding: 14px 16px;
+  text-align: center;
+}
+
+.reel-result strong {
+  display: block;
+  margin-top: 2px;
+  font-size: clamp(1.6rem, 7vw, 2rem);
+  line-height: 1.2;
 }
 
 .wheel-hub {
@@ -481,7 +551,8 @@ button.together {
 
 @media (prefers-reduced-motion: reduce) {
   .wheel,
-  .wheel-label {
+  .wheel-label,
+  .reel-strip {
     transition: none;
   }
 }
@@ -736,6 +807,19 @@ button.together {
 .tally strong {
   font-variant-numeric: tabular-nums;
   font-size: 1.25rem;
+}
+
+.score-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.score-slot .draw-cooldown {
+  font-size: 0.95rem;
+  text-align: right;
 }
 
 .notes li,
@@ -1016,7 +1100,8 @@ footer p {
     max-width: 38rem;
   }
 
-  .wheel-wrap {
+  .wheel-wrap,
+  .reel-wrap {
     width: min(340px, 100%);
   }
 
@@ -1108,7 +1193,8 @@ footer p {
 }
 
 @media (max-height: 520px) and (max-width: 1099px) {
-  .wheel-wrap {
+  .wheel-wrap,
+  .reel-wrap {
     width: min(200px, 46dvh);
   }
 

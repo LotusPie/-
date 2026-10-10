@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PersonFace, ProfileView } from "./profile.jsx";
 
 export function playerOf(room, id) {
@@ -7,6 +7,29 @@ export function playerOf(room, id) {
 
 export function nameOf(room, id) {
   return playerOf(room, id)?.nickname || "旅伴";
+}
+
+export function remainText(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return hours + " 小時 " + minutes + " 分";
+  if (minutes > 0) return minutes + " 分 " + seconds + " 秒";
+  return seconds + " 秒";
+}
+
+export function CooldownText({ until }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!until) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [until]);
+  if (!until) return null;
+  const remain = until - now;
+  if (remain <= 0) return null;
+  return <p className="draw-cooldown">冷卻 {remainText(remain)}</p>;
 }
 
 function rankWord(rank) {
@@ -149,7 +172,10 @@ export function Ranking({ ranking, youId, onOpen }) {
               {!row.connected ? " · 離線" : ""}
             </span>
           </button>
-          <strong>{row.scoreHidden ? "?" : row.score}</strong>
+          <span className="score-slot">
+            <strong>{row.scoreHidden ? "?" : row.score}</strong>
+            {row.scoreHideUntil ? <CooldownText until={row.scoreHideUntil} /> : null}
+          </span>
         </li>
       ))}
     </ol>
@@ -214,7 +240,7 @@ export function Lobby({ onStart, onLeave }) {
       <button className="game-choice dj" type="button" onClick={() => onStart("dj")}>
         <span className="kicker">乘客玩</span>
         <strong>如果我是迪爵</strong>
-        <span>轉盤決定播一首、兩首或三首。</span>
+        <span>轉盤決定播一首、兩首、三首，或此輪跳過。</span>
       </button>
       {leaving ? (
         <div className="confirm">

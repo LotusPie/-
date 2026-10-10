@@ -1,6 +1,6 @@
 import { promptDeck, vibeDeck, scoreDeck } from "./decks.mjs";
 import { advanceDisconnectedDj, advanceDj, beginDj, handleDjAction } from "./dj.mjs";
-import { buyCard, clearRoundCards, forgetPlayer, hiddenFrom, initCards, playCard, presentCards, songLimit, spinDraw, takeDraw } from "./cards.mjs";
+import { buyCard, clearRoundCards, forgetPlayer, hiddenFrom, initCards, playCard, presentCards, scoreHideUntil, songLimit, spinDraw, takeDraw } from "./cards.mjs";
 
 const MAX_PLAYERS = 12;
 const NICK_MAX = 12;
@@ -660,16 +660,18 @@ export function serialize(room, viewerId) {
         nickname: player.nickname,
         score: scoreHidden ? null : player.score,
         scoreHidden,
+        scoreHideUntil: scoreHideUntil(room, player.id),
         connected: player.connected,
         profile: presentProfile(player),
       };
     }),
-    ranking: rankingOf(room.players).map((row) => {
+    ranking: rankingOf(room.players.filter((player) => !scoreHideUntil(room, player.id))).map((row) => {
       const scoreHidden = hiddenFrom(room, row.id, viewerId);
       return {
         ...row,
         score: scoreHidden ? null : row.score,
         scoreHidden,
+        scoreHideUntil: scoreHideUntil(room, row.id),
         profile: presentProfile(findPlayer(room, row.id)),
       };
     }),
@@ -702,8 +704,10 @@ export function serialize(room, viewerId) {
           songs: game.songs || null,
           extra: Boolean(game.extra),
           extraSpins: game.extraSpins || 0,
-          wheelSongs: game.wheelSongs || null,
+          wheelSongs: game.wheelSongs == null ? null : game.wheelSongs,
           wheelSpin: game.wheelSpin || 0,
+          reel: game.reel == null ? null : game.reel,
+          reelSpin: game.reelSpin || 0,
           ratings: Object.fromEntries(
             Object.entries(game.ratings || {}).map(([id, value]) => [id, id === viewerId ? value : true]),
           ),

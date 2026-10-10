@@ -1,8 +1,9 @@
 export const HAND_MAX = 5;
 export const DRAW_EVERY_MS = 3 * 60 * 1000;
+export const HIDE_MS = 2 * 60 * 60 * 1000;
 
 export const CARD_LIST = [
-  { id: "hide", name: "隱藏分數", cost: 3, needs: "" },
+  { id: "hide", name: "隱藏兩小時", cost: 3, needs: "" },
   { id: "swap", name: "交換分數", cost: 4, needs: "other" },
   { id: "peek", name: "偷看", cost: 2, needs: "other" },
   { id: "shield", name: "護身", cost: 3, needs: "" },
@@ -137,6 +138,7 @@ export function initCards(now = Date.now()) {
     bornAt: now,
     draws: 0,
     hidden: [],
+    hideUntil: {},
     pass: [],
     peek: {},
     pendingMode: null,
@@ -218,7 +220,11 @@ function applyCard(room, playerId, cardId, msg) {
   const game = room.game?.kind === "dj" ? room.game : null;
 
   if (cardId === "hide") {
-    if (!room.cards.hidden.includes(playerId)) room.cards.hidden.push(playerId);
+    if (!room.cards.hideUntil) room.cards.hideUntil = {};
+    const now = Date.now();
+    const current = room.cards.hideUntil[playerId];
+    const base = typeof current === "number" && current > now ? current : now;
+    room.cards.hideUntil[playerId] = base + HIDE_MS;
     return { ok: true };
   }
 
@@ -357,7 +363,6 @@ export function takeLobbyQueue(room, game) {
 
 export function clearRoundCards(room) {
   if (!room.cards) return;
-  room.cards.hidden = [];
   room.cards.peek = {};
 }
 
@@ -409,7 +414,7 @@ export function forgetPlayer(room, playerId) {
   if (!cards) return;
   delete cards.hands[playerId];
   delete cards.peek[playerId];
-  cards.hidden = cards.hidden.filter((id) => id !== playerId);
+  if (cards.hideUntil) delete cards.hideUntil[playerId];
   cards.pass = cards.pass.filter((id) => id !== playerId);
   if (cards.pendingNext === playerId) cards.pendingNext = null;
   if (room.game?.nextDjId === playerId) room.game.nextDjId = null;
@@ -452,7 +457,26 @@ export function presentCards(room, viewerId) {
   };
 }
 
-export function hiddenFrom(room, playerId, viewerId) {
+export function scoreHideUntil(room, playerId, now = Date.now()) {
+  const until = room.cards?.hideUntil?.[playerId];
+  if (typeof until !== "number" || until <= now) return null;
+  return until;
+}
+
+export function hiddenFrom(room, playerId, viewerId, now = Date.now()) {
   if (!playerId || playerId === viewerId) return false;
-  return Boolean(room.cards?.hidden?.includes(playerId));
+  return scoreHideUntil(room, playerId, now) != null;
+}
+
+export function tickScoreHides(room, now = Date.now()) {
+  const map = room.cards?.hideUntil;
+  if (!map) return false;
+  let changed = false;
+  for (const [id, until] of Object.entries(map)) {
+    if (typeof until !== "number" || until <= now) {
+      delete map[id];
+      changed = true;
+    }
+  }
+  return changed;
 }
