@@ -1032,6 +1032,16 @@ function testProfile() {
   assert.equal(profile.includes("這個人還沒留下一句話。"), true);
   assert.equal(profile.includes("移除照片"), true);
   assert.equal(play.includes('["me", "個人"]'), true);
+  assert.equal(play.includes('inRoom ? "如果我是迪爵" : "首頁"'), true);
+  assert.equal(play.includes("普通牌手牌最多 5 張"), true);
+  assert.equal(play.includes("轉盤有 10% 是兌換券"), true);
+  assert.equal(play.includes("抓到了要另外兩人附議才扣分"), true);
+  assert.equal(play.includes("聽歌可以打 -2 到 +2，不打也行"), true);
+  assert.equal(play.includes("隱藏兩小時的人不在榜上，其他人從第一名重排"), true);
+  assert.equal(play.includes("進房後才選八個角色"), true);
+  assert.equal(play.includes("同一個角色用猜拳決定"), true);
+  assert.equal(app.includes("<IntroPage"), true);
+  assert.equal(app.includes("inRoom={Boolean(room)}"), true);
   assert.equal(play.includes("who-btn"), true);
   assert.equal(play.includes("setViewingId"), true);
   assert.equal(app.includes('value === "me"'), true);

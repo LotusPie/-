@@ -4,7 +4,7 @@ import { DjGame } from "./dj.jsx";
 import { CardDesk, FunctionBoard } from "./cards.jsx";
 import { DevPanel } from "./dev.jsx";
 import { RoleBoard } from "./professions.jsx";
-import { CardPrompt, Home, Lobby, PageSwitch, ScorePage } from "./play.jsx";
+import { CardPrompt, Home, IntroPage, Lobby, PageSwitch, ScorePage } from "./play.jsx";
 import { ProfilePage } from "./profile.jsx";
 
 async function writeText(text) {
@@ -167,17 +167,9 @@ export default function App() {
         )}
         {room?.game?.kind === "dj" && <DjGame room={room} youId={youId} act={act} />}
       </div>
-      {page === "rank" && <ScorePage room={room} youId={youId} />}
-      {page === "cards" &&
-        (room ? (
-          <CardDesk room={room} youId={youId} act={act} error={error} />
-        ) : (
-          <section className="panel card-page stack">
-            <h2>我的卡牌</h2>
-            <p className="hint">進房間之後，這裡會顯示目前的手牌和牌店。</p>
-          </section>
-        ))}
-      {page === "me" && <ProfilePage key={youId || "out"} room={room} youId={youId} act={act} />}
+      {page === "rank" && (room ? <ScorePage room={room} youId={youId} /> : <IntroPage kind="rank" />)}
+      {page === "cards" && (room ? <CardDesk room={room} youId={youId} act={act} error={error} /> : <IntroPage kind="cards" />)}
+      {page === "me" && (room ? <ProfilePage key={youId || "out"} room={room} youId={youId} act={act} /> : <IntroPage kind="me" />)}
       {devOn && page === "dev" && <DevPanel room={room} youId={youId} dev={dev} />}
       <footer>
         <p>私人房間 · 沒有帳號 · 不會公開列出</p>
@@ -192,7 +184,7 @@ export default function App() {
           </div>
         )}
       </footer>
-      <PageSwitch page={page} onChange={choosePage} dev={devOn} />
+      <PageSwitch page={page} onChange={choosePage} dev={devOn} inRoom={Boolean(room)} />
       {room ? <CardPrompt room={room} act={act} /> : null}
       {toast && <p className="toast">{toast}</p>}
     </div>

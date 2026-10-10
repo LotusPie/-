@@ -168,9 +168,46 @@ export function Ranking({ ranking, youId, onOpen }) {
   );
 }
 
-export function PageSwitch({ page, onChange, dev = false }) {
+const INTROS = {
+  cards: {
+    title: "我的卡牌",
+    lines: [
+      "普通牌手牌最多 5 張",
+      "進房可免費轉 3 次，之後每 30 分鐘一次",
+      "轉盤有 10% 是兌換券",
+      "功能牌不限張數，每張 10 點，或用兌換券換",
+      "功能牌管 10 分鐘怎麼說話",
+      "抓到了要另外兩人附議才扣分",
+    ],
+  },
+  rank: {
+    title: "積分排名",
+    lines: ["聽歌可以打 -2 到 +2，不打也行", "幫別人打分自己 +1", "隱藏兩小時的人不在榜上，其他人從第一名重排"],
+  },
+  me: {
+    title: "個人",
+    lines: ["頭像、一句話、基本資料都選填", "進房後才選八個角色", "同一個角色用猜拳決定"],
+  },
+};
+
+export function IntroPage({ kind }) {
+  const intro = INTROS[kind];
+  if (!intro) return null;
+  return (
+    <section className="panel stack intro-page">
+      <h2>{intro.title}</h2>
+      <ul className="intro-list">
+        {intro.lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function PageSwitch({ page, onChange, dev = false, inRoom = false }) {
   const items = [
-    ["play", "如果我是迪爵"],
+    ["play", inRoom ? "如果我是迪爵" : "首頁"],
     ["cards", "我的卡牌"],
     ["rank", "積分排名"],
     ["me", "個人"],

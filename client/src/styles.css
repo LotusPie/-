@@ -910,6 +910,18 @@ footer p {
   max-width: 100%;
 }
 
+.intro-list {
+  margin: 0;
+  padding-left: 1.25em;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.intro-list li {
+  overflow-wrap: anywhere;
+}
+
 .score-page {
   display: none;
 }
