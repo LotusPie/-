@@ -1,0 +1,334 @@
+.card-desk {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.function-board {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.function-board h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.function-board ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.function-board li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border-radius: 18px;
+  padding: 10px 12px;
+}
+
+.function-board li > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.function-board button {
+  flex: 0 0 auto;
+  min-height: 48px;
+}
+
+.deck-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.deck-block + .deck-block {
+  border-top: 2px dashed var(--line);
+  padding-top: 18px;
+}
+
+.deck-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deck-head h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  line-height: 1.3;
+}
+
+.deck-head p,
+.collect-empty {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.collect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 10px;
+  justify-items: stretch;
+}
+
+.collect-card {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 280px;
+  min-width: 0;
+  justify-self: center;
+  background: transparent;
+  padding: 0;
+}
+
+.card-face {
+  container-type: inline-size;
+  position: relative;
+  width: 100%;
+  filter: drop-shadow(0 8px 12px rgba(48, 32, 16, 0.12));
+}
+
+.card-face svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.card-face-name {
+  position: absolute;
+  left: 7.5%;
+  width: 85%;
+  bottom: 4.76%;
+  height: 16.07%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fffaf3;
+  font-weight: 700;
+  font-size: clamp(0.72rem, 13cqi, 1.35rem);
+  letter-spacing: 0;
+  line-height: 1;
+  pointer-events: none;
+}
+
+@container (min-width: 220px) {
+  .card-face-name {
+    letter-spacing: 0.04em;
+  }
+}
+
+.collect-card.is-on .card-face,
+.collect-card.is-open .card-face {
+  outline: 3px solid var(--accent, var(--ink));
+  outline-offset: 2px;
+  border-radius: 18px;
+}
+
+.collect-mark {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.95rem;
+  flex: 0 0 auto;
+}
+
+.card-detail {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.card-detail {
+  background: #fff4e8;
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.collect-actions,
+.card-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.collect-actions button,
+.card-picks button {
+  min-height: 56px;
+  min-width: 0;
+}
+
+.collect-actions .texty {
+  flex: 1 1 auto;
+  padding: 8px 6px;
+}
+
+.collect-actions .primary,
+.collect-actions .secondary,
+.card-picks button {
+  flex: 1 1 auto;
+  padding: 8px 6px;
+}
+
+@container (max-width: 220px) {
+  .collect-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .collect-actions .texty,
+  .collect-actions .primary,
+  .collect-actions .secondary {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  .collect-mark {
+    align-self: center;
+  }
+}
+
+.card-picks button.person-pick {
+  flex: 1 1 100%;
+}
+
+.card-note,
+.card-notes {
+  margin: 0;
+  font-weight: 700;
+}
+
+.card-notes {
+  padding-left: 1.1rem;
+}
+
+@media (min-width: 1100px) {
+  .collect-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+}
+
+.dj-game .rate-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+
+.draw-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  border-top: 8px solid var(--amber);
+  padding: 14px 14px 16px;
+}
+
+.draw-wheel-wrap {
+  position: relative;
+  width: min(260px, 100%);
+  max-width: 100%;
+  margin: 0 auto;
+  padding-top: 18px;
+}
+
+.draw-pointer {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  margin-left: -12px;
+  border-left: 12px solid transparent;
+  border-right: 12px solid transparent;
+  border-top: 20px solid var(--ink);
+}
+
+.draw-wheel {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 4px solid var(--ink);
+  box-shadow: var(--shadow);
+  position: relative;
+  transition: transform 2.4s cubic-bezier(0.15, 0.75, 0.1, 1);
+}
+
+.draw-wheel-label {
+  position: absolute;
+  z-index: 1;
+  width: max-content;
+  max-width: 24%;
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  pointer-events: none;
+  transition: transform 2.4s cubic-bezier(0.15, 0.75, 0.1, 1);
+}
+
+.draw-hub {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18%;
+  height: 18%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--card);
+  border: 4px solid var(--ink);
+}
+
+.draw-result,
+.draw-wait {
+  margin: 0;
+  text-align: center;
+}
+
+.draw-result {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.draw-wait {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.draw-spin {
+  width: 100%;
+  min-height: 56px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw-wheel,
+  .draw-wheel-label {
+    transition: none;
+  }
+}
+
+.draw-cooldown {
+  margin: 0;
+  text-align: center;
+  color: var(--amber);
+  font-size: 1.35rem;
+  font-weight: 700;
+}
